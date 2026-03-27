@@ -11,7 +11,7 @@ function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
   process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
   process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-  process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
 }
 
 /** Remove all config-related env vars so tests start clean. */
@@ -20,7 +20,7 @@ function clearConfigEnvVars(): void {
     'OPENCLAW_INSTANCE_NAME',
     'SKRIBBY_API_KEY',
     'ELEVENLABS_API_KEY',
-    'ANTHROPIC_API_KEY',
+    'GEMINI_API_KEY',
     'GITHUB_TOKEN',
     'GITHUB_REPO',
     'TELEGRAM_BOT_TOKEN',
@@ -55,7 +55,7 @@ describe('loadConfig', () => {
       expect(config.instanceName).toBe('test-bot');
       expect(config.skribbyApiKey).toBe('sk-skribby-test');
       expect(config.elevenLabsApiKey).toBe('sk-eleven-test');
-      expect(config.anthropicApiKey).toBe('sk-ant-test');
+      expect(config.geminiApiKey).toBe('gemini-test-key');
       expect(config.githubToken).toBe('ghp-test-token');
       expect(config.githubRepo).toBe('org/repo');
       expect(config.telegramBotToken).toBe('tg-bot-test');
@@ -68,7 +68,7 @@ describe('loadConfig', () => {
     it('throws ZodError when OPENCLAW_INSTANCE_NAME is missing', () => {
       process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+      process.env.GEMINI_API_KEY = 'gemini-test-key';
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
@@ -76,7 +76,7 @@ describe('loadConfig', () => {
     it('throws ZodError when SKRIBBY_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+      process.env.GEMINI_API_KEY = 'gemini-test-key';
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
@@ -84,12 +84,12 @@ describe('loadConfig', () => {
     it('throws ZodError when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+      process.env.GEMINI_API_KEY = 'gemini-test-key';
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
-    it('throws ZodError when ANTHROPIC_API_KEY is missing', () => {
+    it('throws ZodError when GEMINI_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
@@ -112,7 +112,7 @@ describe('loadConfig', () => {
         expect(paths).toContain('instanceName');
         expect(paths).toContain('skribbyApiKey');
         expect(paths).toContain('elevenLabsApiKey');
-        expect(paths).toContain('anthropicApiKey');
+        expect(paths).toContain('geminiApiKey');
       }
     });
   });
@@ -190,7 +190,7 @@ describe('loadConfig', () => {
       expect(typeof config.instanceName).toBe('string');
       expect(typeof config.skribbyApiKey).toBe('string');
       expect(typeof config.elevenLabsApiKey).toBe('string');
-      expect(typeof config.anthropicApiKey).toBe('string');
+      expect(typeof config.geminiApiKey).toBe('string');
       expect(typeof config.confidenceThreshold).toBe('number');
     });
   });

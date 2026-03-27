@@ -1,21 +1,16 @@
 /**
- * Claude Haiku intent extraction from transcript chunks.
- * Issue #3 — Smokefarmer.
- *
- * Sends transcript chunks to Claude Haiku, parses structured JSON response,
- * validates with Zod, and filters by confidence threshold.
+ * Google Gemini intent extraction from transcript chunks.
+ * Uses gemini-2.0-flash — free tier, fast, good structured extraction.
  */
 
 import { randomUUID } from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { Intent } from './models.js';
 import type { OpenClawConfig } from './config.js';
 import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
-import { safeErrorMessage } from './errors.js';
 
-const HAIKU_MODEL = 'claude-3-haiku-20240307';
-const MAX_TOKENS = 2048;
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
@@ -39,22 +34,16 @@ const ExtractionResponseSchema = z.object({
 export type RawIntent = z.infer<typeof RawIntentSchema>;
 
 /**
- * Extract intents from a transcript chunk using Claude Haiku.
+ * Extract intents from a transcript chunk using Gemini Flash.
  * Returns only intents above the configured confidence threshold.
- * Retries on transient failures with exponential backoff.
  */
 export async function extractIntents(
   transcriptChunk: string,
   config: OpenClawConfig,
 ): Promise<Intent[]> {
-  if (transcriptChunk.trim().length === 0) {
-    return [];
-  }
+  if (transcriptChunk.trim().length === 0) return [];
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
-  const response = await callWithRetry(client, transcriptChunk);
-
-  const text = extractTextContent(response);
+  const text = await callWithRetry(transcriptChunk, config.geminiApiKey);
   const parsed = parseExtractionResponse(text);
 
   return parsed.items
@@ -62,32 +51,23 @@ export async function extractIntents(
     .map((item) => rawToIntent(item));
 }
 
-/**
- * Call Anthropic API with exponential backoff retry on transient errors.
- */
-async function callWithRetry(
-  client: Anthropic,
-  transcriptChunk: string,
-): Promise<Anthropic.Message> {
+async function callWithRetry(chunk: string, apiKey: string): Promise<string> {
   let lastError: unknown;
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+  });
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await client.messages.create({
-        model: HAIKU_MODEL,
-        max_tokens: MAX_TOKENS,
-        system: EXTRACTION_SYSTEM_PROMPT,
-        messages: [
-          { role: 'user', content: wrapTranscript(transcriptChunk) },
-        ],
-      });
+      const result = await model.generateContent(wrapTranscript(chunk));
+      return result.response.text();
     } catch (err) {
       lastError = err;
-      if (!isRetryableError(err) || attempt === MAX_RETRIES - 1) {
-        break;
+      if (attempt < MAX_RETRIES - 1) {
+        await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
       }
-      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
-      await sleep(delay);
     }
   }
 
@@ -96,26 +76,13 @@ async function callWithRetry(
   );
 }
 
-function isRetryableError(err: unknown): boolean {
-  if (err instanceof Anthropic.RateLimitError) return true;
-  if (err instanceof Anthropic.InternalServerError) return true;
-  if (err instanceof Anthropic.APIConnectionError) return true;
-  return false;
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Extract text content from Anthropic message response.
- */
-function extractTextContent(response: Anthropic.Message): string {
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('No text content in Claude response');
-  }
-  return textBlock.text;
+function safeErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return 'Unknown error';
 }
 
 /**
@@ -135,20 +102,12 @@ export function parseExtractionResponse(text: string): z.infer<typeof Extraction
   return ExtractionResponseSchema.parse(raw);
 }
 
-/**
- * Strip markdown code block wrappers if present.
- * Claude sometimes wraps JSON in ```json ... ```
- */
 function stripMarkdownCodeBlock(text: string): string {
   const trimmed = text.trim();
-  const codeBlockMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
-  return codeBlockMatch ? codeBlockMatch[1].trim() : trimmed;
+  const match = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  return match ? match[1].trim() : trimmed;
 }
 
-/**
- * Convert a raw LLM-extracted intent to a full Intent with generated ID.
- * Types are already validated by Zod — no unsafe casts needed.
- */
 function rawToIntent(raw: RawIntent): Intent {
   return {
     id: randomUUID(),
