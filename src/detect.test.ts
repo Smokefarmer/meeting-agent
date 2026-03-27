@@ -5,15 +5,17 @@ import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
 import type { OpenClawConfig } from './config.js';
 
 // ---------------------------------------------------------------------------
-// Mock Anthropic SDK
+// Mock Gemini SDK
 // ---------------------------------------------------------------------------
 
-const mockCreate = vi.fn();
+const mockGenerateContent = vi.fn();
 
-vi.mock('@anthropic-ai/sdk', () => {
+vi.mock('@google/generative-ai', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      messages: { create: mockCreate },
+    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
+      getGenerativeModel: vi.fn().mockReturnValue({
+        generateContent: mockGenerateContent,
+      }),
     })),
   };
 });
@@ -26,7 +28,7 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test',
   skribbyApiKey: 'sk-test',
   elevenLabsApiKey: 'sk-test',
-  anthropicApiKey: 'sk-test-key',
+  geminiApiKey: 'sk-test-key',
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,
@@ -34,9 +36,9 @@ const mockConfig: OpenClawConfig = {
   confidenceThreshold: 0.85,
 };
 
-function makeAnthropicResponse(text: string) {
+function makeGeminiResponse(text: string) {
   return {
-    content: [{ type: 'text' as const, text }],
+    response: { text: () => text },
   };
 }
 
@@ -224,7 +226,7 @@ describe('parseExtractionResponse', () => {
 
 describe('extractIntents', () => {
   beforeEach(() => {
-    mockCreate.mockReset();
+    mockGenerateContent.mockReset();
   });
 
   it('filters intents by confidence threshold', async () => {
@@ -236,7 +238,7 @@ describe('extractIntents', () => {
       ],
     });
 
-    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
 
     const result = await extractIntents('Some transcript text', mockConfig);
 
@@ -258,44 +260,44 @@ describe('extractIntents', () => {
     const result = await extractIntents('', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 
   it('returns empty array for whitespace-only transcript without calling API', async () => {
     const result = await extractIntents('   \n\t  ', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 
-  it('throws when API returns no text content', async () => {
-    mockCreate.mockResolvedValueOnce({ content: [] });
+  it('throws when Gemini API call fails', async () => {
+    mockGenerateContent.mockRejectedValueOnce(new Error('API unavailable'));
 
     await expect(
       extractIntents('Some transcript', mockConfig),
-    ).rejects.toThrow('No text content in Claude response');
+    ).rejects.toThrow('Intent extraction failed after 3 attempts');
   });
 
-  it('sends EXTRACTION_SYSTEM_PROMPT as system prompt', async () => {
+  it('sends transcript to Gemini generateContent', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
 
     await extractIntents('Test transcript', mockConfig);
 
-    expect(mockCreate).toHaveBeenCalledOnce();
-    const callArgs = mockCreate.mock.calls[0][0];
-    expect(callArgs.system).toBe(EXTRACTION_SYSTEM_PROMPT);
+    expect(mockGenerateContent).toHaveBeenCalledOnce();
+    const callArg = mockGenerateContent.mock.calls[0][0] as string;
+    expect(callArg).toContain('Test transcript');
   });
 
   it('wraps transcript in <transcript> tags', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
 
     const transcript = 'Alice said hello';
     await extractIntents(transcript, mockConfig);
 
-    expect(mockCreate).toHaveBeenCalledOnce();
-    const callArgs = mockCreate.mock.calls[0][0];
-    expect(callArgs.messages[0].content).toBe(wrapTranscript(transcript));
+    expect(mockGenerateContent).toHaveBeenCalledOnce();
+    const callArg = mockGenerateContent.mock.calls[0][0] as string;
+    expect(callArg).toBe(wrapTranscript(transcript));
   });
 });
