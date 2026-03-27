@@ -109,7 +109,7 @@ describe('speak', () => {
     // Audio buffer posted to Skribby speak endpoint
     expect(mockAxiosPost).toHaveBeenCalledOnce();
     const [url, body, opts] = mockAxiosPost.mock.calls[0];
-    expect(url).toBe('https://api.skribby.io/v1/bots/bot-123/speak');
+    expect(url).toBe('https://platform.skribby.io/api/v1/bot/bot-123/speak');
     expect(Buffer.isBuffer(body)).toBe(true);
     expect(opts.headers['Authorization']).toBe('Bearer sk-skribby-test');
     expect(opts.headers['Content-Type']).toBe('audio/mpeg');

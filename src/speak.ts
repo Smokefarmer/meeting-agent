@@ -23,7 +23,7 @@ const OUTPUT_FORMAT = 'mp3_44100_128' as const;
 /** Warn if text exceeds this character count. */
 const MAX_TEXT_LENGTH = 200;
 
-const SKRIBBY_BASE_URL = 'https://api.skribby.io/v1';
+const SKRIBBY_BASE_URL = 'https://platform.skribby.io/api/v1';
 
 /**
  * Collect a web-standard `ReadableStream<Uint8Array>` into a single `Buffer`.
@@ -78,7 +78,7 @@ export async function speak(
     const audioBuffer = await collectStream(audioStream);
 
     await axios.post(
-      `${SKRIBBY_BASE_URL}/bots/${botId}/speak`,
+      `${SKRIBBY_BASE_URL}/bot/${botId}/speak`,
       audioBuffer,
       {
         headers: {

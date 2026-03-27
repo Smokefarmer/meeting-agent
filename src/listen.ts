@@ -24,7 +24,7 @@ const SkribbyMessageSchema = z.object({
 // Constants
 // ---------------------------------------------------------------------------
 
-const BASE_URL = 'wss://api.skribby.io/v1/bots';
+const BASE_URL = 'wss://platform.skribby.io/api/v1/bot';
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1_000;
 const CLEAN_CLOSE_CODE = 1000;

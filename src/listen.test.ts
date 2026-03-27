@@ -71,7 +71,7 @@ describe('streamTranscript', () => {
     streamTranscript('bot-123', 'sk-test-key', onSegment);
 
     const ws = latestWs();
-    expect(ws.url).toBe('wss://api.skribby.io/v1/bots/bot-123/transcript');
+    expect(ws.url).toBe('wss://platform.skribby.io/api/v1/bot/bot-123/transcript');
     expect(ws.options).toEqual(
       expect.objectContaining({
         headers: { Authorization: 'Bearer sk-test-key' },

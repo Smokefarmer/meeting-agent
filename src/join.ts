@@ -6,19 +6,15 @@
 import axios from 'axios';
 import { z } from 'zod';
 
-const SKRIBBY_API_BASE = 'https://api.skribby.io/v1';
+const SKRIBBY_API_BASE = 'https://platform.skribby.io/api/v1';
 
 /**
  * Zod schema for Skribby API response.
- * Skribby returns snake_case (bot_id) — we transform to camelCase.
+ * Skribby returns an id field for the bot.
  */
 const SkribbyJoinResponseSchema = z.object({
-  bot_id: z.string().min(1),
+  id: z.string().min(1),
 });
-
-export interface JoinResult {
-  botId: string;
-}
 
 export async function joinMeeting(
   meetingUrl: string,
@@ -26,10 +22,12 @@ export async function joinMeeting(
   apiKey: string,
 ): Promise<string> {
   const response = await axios.post(
-    `${SKRIBBY_API_BASE}/bots`,
+    `${SKRIBBY_API_BASE}/bot`,
     {
       meeting_url: meetingUrl,
-      bot_display_name: botName,
+      bot_name: botName,
+      service: 'gmeet',
+      transcription_model: 'openai/whisper-large-v3',
     },
     {
       headers: {
@@ -41,5 +39,5 @@ export async function joinMeeting(
   );
 
   const parsed = SkribbyJoinResponseSchema.parse(response.data);
-  return parsed.bot_id;
+  return parsed.id;
 }
