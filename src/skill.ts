@@ -3,7 +3,7 @@
  * Handles incoming gateway messages, detects Meet URLs, and boots the pipeline.
  */
 
-import type { OpenClawConfig } from './config.js';
+import { loadConfig } from './config.js';
 import { MeetingSession } from './session.js';
 import { joinMeeting } from './join.js';
 import { runPipeline } from './pipeline.js';
@@ -22,22 +22,23 @@ export function extractMeetUrl(message: string): string | null {
 
 export async function handleMessage(
   message: string,
-  config: OpenClawConfig,
   replyFn: (msg: string) => Promise<void>,
 ): Promise<void> {
   const meetUrl = extractMeetUrl(message);
   if (!meetUrl) return;
 
+  const config = loadConfig();
   const session = new MeetingSession(meetUrl, config);
 
   await replyFn('Joining the call now...');
 
   try {
     session.botId = await joinMeeting(meetUrl, config.instanceName, config.skribbyApiKey);
-    await replyFn(`${config.instanceName} has joined the meeting.`);
+    await replyFn(`✅ ${config.instanceName} has joined the meeting.`);
   } catch (err) {
-    console.error('Join failed:', safeErrorMessage(err));
-    await replyFn('Failed to join meeting. Please check config and try again.');
+    const errorMsg = safeErrorMessage(err);
+    console.error('Join failed:', errorMsg);
+    await replyFn(`❌ Failed to join meeting: ${errorMsg}`);
     return;
   }
 
