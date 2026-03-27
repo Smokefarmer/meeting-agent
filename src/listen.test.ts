@@ -85,10 +85,10 @@ describe('streamTranscript', () => {
 
   it('connects with correct URL and authorization header', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-123/transcript', 'sk-test-key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-123/transcript', 'sk-test-key', onSegment);
 
     const ws = latestWs();
-    expect(ws.url).toBe('wss://us-east-1.recall.ai/api/v1/bot/bot-123/transcript');
+    expect(ws.url).toBe('wss://eu-central-1.recall.ai/api/v1/bot/bot-123/transcript');
     expect(ws.options).toEqual(
       expect.objectContaining({
         headers: { Authorization: 'Token sk-test-key' },
@@ -102,7 +102,7 @@ describe('streamTranscript', () => {
 
   it('parses incoming Recall.ai transcript event and calls onSegment', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     sendTranscriptMessage(ws, {
@@ -127,7 +127,7 @@ describe('streamTranscript', () => {
 
   it('defaults speaker to null when missing from message', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     sendTranscriptMessage(ws, {
@@ -142,7 +142,7 @@ describe('streamTranscript', () => {
 
   it('ignores non-final transcript events', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     sendTranscriptMessage(ws, {
@@ -157,7 +157,7 @@ describe('streamTranscript', () => {
 
   it('ignores non-transcript event types', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     ws.emit('message', Buffer.from(JSON.stringify({ type: 'status', data: { status: 'active' } })));
@@ -175,7 +175,7 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
     // Send invalid JSON
@@ -196,7 +196,7 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
     // Missing required 'words' field — fails RecallTranscriptDataSchema
@@ -219,7 +219,7 @@ describe('streamTranscript', () => {
 
   it('resolves on clean close (code 1000) without reconnecting', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     ws.emit('close', 1000);
@@ -234,7 +234,7 @@ describe('streamTranscript', () => {
 
   it('reconnects with exponential backoff on unexpected close (up to 3 times)', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     // First connection -- unexpected close
     expect(instances).toHaveLength(1);
@@ -268,7 +268,7 @@ describe('streamTranscript', () => {
 
   it('reconnects then resolves if subsequent connection closes cleanly', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     // First connection -- unexpected close
     latestWs().emit('close', 1006);
@@ -291,7 +291,7 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockRejectedValue(new Error('callback boom'));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
     sendTranscriptMessage(ws, {
@@ -319,7 +319,7 @@ describe('streamTranscript', () => {
 
   it('swallows WebSocket error events without crashing', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
 

@@ -91,7 +91,7 @@ describe('sendChatMessage', () => {
     await sendChatMessage('Hello meeting', mockConfigWithTTS, BOT_ID);
 
     expect(mockAxiosPost).toHaveBeenCalledWith(
-      'https://us-east-1.recall.ai/api/v1/bot/bot-123/send_chat_message/',
+      'https://eu-central-1.recall.ai/api/v1/bot/bot-123/send_chat_message/',
       { message: 'Hello meeting' },
       {
         headers: {
@@ -165,7 +165,7 @@ describe('respond', () => {
 
     // Chat message sent via REST API
     expect(mockAxiosPost).toHaveBeenCalledWith(
-      'https://us-east-1.recall.ai/api/v1/bot/bot-123/send_chat_message/',
+      'https://eu-central-1.recall.ai/api/v1/bot/bot-123/send_chat_message/',
       { message: 'Hello meeting' },
       expect.objectContaining({
         headers: expect.objectContaining({
