@@ -66,6 +66,7 @@ describe('routeIntent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     session = new MeetingSession('https://meet.google.com/abc', mockConfig);
+    session.botId = 'bot-123';
     mockIsDuplicate.mockReturnValue(false);
     mockSpeak.mockResolvedValue(undefined);
     mockCreate.mockResolvedValue({
@@ -113,6 +114,7 @@ describe('routeIntent', () => {
       expect(mockSpeak).toHaveBeenCalledWith(
         "I don't have GitHub connected. I noted it locally.",
         configNoToken,
+        'bot-123',
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -126,6 +128,7 @@ describe('routeIntent', () => {
       expect(mockSpeak).toHaveBeenCalledWith(
         "I don't have GitHub connected. I noted it locally.",
         configNoRepo,
+        'bot-123',
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -140,6 +143,7 @@ describe('routeIntent', () => {
       expect(mockSpeak).toHaveBeenCalledWith(
         expect.stringContaining('confidence'),
         mockConfig,
+        'bot-123',
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -222,6 +226,7 @@ describe('routeIntent', () => {
       expect(mockSpeak).toHaveBeenCalledWith(
         expect.stringContaining('#42'),
         mockConfig,
+        'bot-123',
       );
     });
   });
@@ -289,6 +294,7 @@ describe('routeIntent', () => {
       expect(mockSpeak).toHaveBeenCalledWith(
         expect.stringContaining('failed'),
         mockConfig,
+        'bot-123',
       );
       expect(session.createdIssues).toHaveLength(0);
     });
