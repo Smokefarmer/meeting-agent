@@ -33,7 +33,7 @@ export async function joinMeeting(
       meeting_url: meetingUrl,
       bot_name: botName,
       service: 'gmeet',
-      transcription_model: 'openai/whisper-large-v3',
+      transcription_model: 'deepgram/nova-2-realtime',
     },
     {
       headers: {
