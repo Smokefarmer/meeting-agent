@@ -50,7 +50,7 @@ export function jaccardSimilarity(a: string, b: string): number {
 export function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

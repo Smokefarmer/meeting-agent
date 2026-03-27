@@ -57,8 +57,9 @@ Extract: (skip — hypothetical, confidence < 0.5)
 
 /**
  * Wrap raw transcript text in safety delimiters.
- * This prevents prompt injection from meeting participants.
+ * Escapes closing tags to prevent delimiter injection from meeting participants.
  */
 export function wrapTranscript(chunk: string): string {
-  return `<transcript>\n${chunk}\n</transcript>`;
+  const sanitized = chunk.replace(/<\/transcript>/gi, '&lt;/transcript&gt;');
+  return `<transcript>\n${sanitized}\n</transcript>`;
 }

@@ -116,8 +116,8 @@ describe('normalizeText', () => {
     expect(normalizeText('hello... world? yes!')).toBe('hello world yes');
   });
 
-  it('preserves underscores (\\w includes underscores)', () => {
-    expect(normalizeText('hello_world')).toBe('hello_world');
+  it('strips underscores so login_page matches login page', () => {
+    expect(normalizeText('hello_world')).toBe('helloworld');
   });
 
   it('handles empty string', () => {
