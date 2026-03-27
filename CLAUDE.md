@@ -115,9 +115,17 @@ telegram:
 
 ### DRY (Don't Repeat Yourself)
 
-1. **Three strikes rule** - Duplicate code twice = refactor on third occurrence
-2. **Extract constants** - Magic numbers/strings → named constants
-3. **Shared utilities** - Common patterns go in `utils.py`
+1. **Extract on second occurrence** - If a pattern appears twice, extract to a shared utility
+2. **Shared helpers over copy-paste** - Especially for: API calls, error parsing, config loading, prompt formatting
+3. **Parameterize, don't duplicate** - When multiple functions differ only in a config value, use a single generic function with parameters
+4. **Extract constants** - Magic numbers/strings → named constants in `config.py`
+
+### Code Organization
+
+1. **Colocation** - Keep related code close together; helpers belong near their callers
+2. **Flat over nested** - Prefer shallow directory structures; avoid deeply nested folders
+3. **`__init__.py` for modules** - Use barrel exports to define a module's public API
+4. **Constants in config** - Magic numbers and strings belong in config files, not inline
 
 ### Type Hints
 
@@ -170,6 +178,45 @@ pytest --cov=meeting_agent
 # Specific module
 pytest tests/test_extract.py -v
 ```
+
+---
+
+---
+
+## Key Principles
+
+### CLI Layer (Click)
+
+1. **Thin commands** - CLI commands delegate to services, don't contain business logic
+2. **Rich for output** - Use Rich console for progress bars, tables, formatted output
+3. **Config injection** - Commands load config once, pass to services
+4. **Graceful errors** - Catch exceptions, show user-friendly messages via Rich
+
+### Transcription Layer
+
+1. **Engine abstraction** - Support multiple engines (faster-whisper, OpenAI API) behind common interface
+2. **Streaming when possible** - For long audio, process in chunks
+3. **Speaker diarization optional** - Gracefully degrade if pyannote unavailable
+
+### Extraction Layer (LLM)
+
+1. **Structured output** - Always request JSON, validate with Pydantic
+2. **Confidence scores** - Every extracted intent needs a confidence score
+3. **Retry with backoff** - Handle rate limits gracefully
+4. **Prompt versioning** - Keep prompts in `prompts.py`, version major changes
+
+### Action Layer
+
+1. **One action per module** - `github.py`, `calendar.py`, `telegram.py` each handle one integration
+2. **Idempotent when possible** - Check if issue already exists before creating
+3. **Fail gracefully** - One failed action shouldn't stop others
+4. **Action logging** - Record all actions taken for audit trail
+
+### Data Layer
+
+1. **Pydantic models** - All data structures defined with Pydantic for validation
+2. **SQLite for MVP** - Simple, single-file, easy backup
+3. **JSON for transcripts** - Store full transcripts as JSON files alongside DB records
 
 ---
 
