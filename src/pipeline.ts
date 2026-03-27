@@ -47,7 +47,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
         for (const intent of intents) {
           if (!isDuplicate(intent, session)) {
             session.addIntent(intent);
-            await routeIntent(intent, session);
+            await routeIntent(intent, session, config);
           }
         }
       } catch (err) {
@@ -61,7 +61,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
   } finally {
     session.end();
     try {
-      await generateAndSendSummary(session);
+      await generateAndSendSummary(session, config);
     } catch (err) {
       console.error('Summary generation failed:', safeErrorMessage(err));
     }
