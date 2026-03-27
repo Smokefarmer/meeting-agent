@@ -24,19 +24,37 @@ export async function joinMeeting(
   meetingUrl: string,
   botName: string,
   apiKey: string,
+  webhookUrl?: string,
 ): Promise<JoinResult> {
+  const recordingConfig = webhookUrl ? {
+    transcript: {
+      provider: {
+        recallai_streaming: {
+          mode: 'prioritize_low_latency',
+          language_code: 'en',
+        },
+      },
+    },
+    realtime_endpoints: [
+      {
+        type: 'webhook',
+        url: webhookUrl,
+        events: ['transcript.data'],
+      },
+    ],
+  } : undefined;
+
   const response = await axios.post(
     `${RECALL_API_BASE}/bot/`,
     {
       meeting_url: meetingUrl,
       bot_name: botName,
+      ...(recordingConfig ? { recording_config: recordingConfig } : {}),
       // Required to enable on-demand output_audio endpoint for ElevenLabs TTS injection
-      // See: https://docs.recall.ai/docs/output-audio-in-meetings
       automatic_audio_output: {
         in_call_recording: {
           data: {
             kind: 'mp3',
-            // Silent 1s MP3 — placeholder required to unlock output_audio endpoint
             b64_data: 'SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6urq6urq6urq6urq6urq6urq6urq6urq6v////////////////////////////////8AAAAATGF2YzU4LjM1AAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA',
           },
         },
