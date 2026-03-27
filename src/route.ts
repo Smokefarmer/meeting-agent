@@ -11,7 +11,7 @@ import type { Intent, CreatedIssue } from './models.js';
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
 import { isDuplicate } from './dedup.js';
-import { speak } from './speak.js';
+import { respond } from './speak.js';
 
 /**
  * Route an intent to the appropriate action handler.
@@ -49,7 +49,7 @@ async function handleGitHubIntent(
   // Check GitHub configuration
   if (!config.githubToken || !config.githubRepo) {
     if (session.botId) {
-      speak("I don't have GitHub connected. I noted it locally.", config, session.botId).catch(console.error);
+      respond("I don't have GitHub connected. I noted it locally.", config, session.botId).catch(console.error);
     }
     return;
   }
@@ -57,7 +57,7 @@ async function handleGitHubIntent(
   // Check confidence threshold
   if (intent.confidence < config.confidenceThreshold) {
     if (session.botId) {
-      speak(`I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`, config, session.botId).catch(console.error);
+      respond(`I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`, config, session.botId).catch(console.error);
     }
     return;
   }
@@ -66,13 +66,13 @@ async function handleGitHubIntent(
     const issue = await createGitHubIssue(intent, session, config);
     session.addCreatedIssue(issue);
     if (session.botId) {
-      speak(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);
+      respond(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error('GitHub issue creation failed:', errMsg);
     if (session.botId) {
-      speak('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId).catch(console.error);
+      respond('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId).catch(console.error);
     }
   }
 }

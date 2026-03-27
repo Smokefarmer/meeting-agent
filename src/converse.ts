@@ -11,11 +11,10 @@ import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
-import { speak } from './speak.js';
+import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
 
 const GEMINI_MODEL = 'gemini-2.0-flash';
-const MAX_TOKENS = 512;
 const MAX_RESPONSE_LENGTH = 200;
 const QA_COOLDOWN_MS = 5_000;
 const QA_MAX_PER_SESSION = 30;
@@ -137,7 +136,7 @@ export async function handleAddressedSpeech(
       ? response.answer.slice(0, MAX_RESPONSE_LENGTH - 3) + '...'
       : response.answer;
 
-    await speak(spokenAnswer, config, session.botId);
+    await respond(spokenAnswer, config, session.botId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Q&A response failed:', message);

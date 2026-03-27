@@ -37,23 +37,30 @@ vi.mock('axios', () => {
 // Import after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { speak, speakGreeting } from './speak.js';
+import { respond, sendChatMessage, speakGreeting } from './speak.js';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const mockConfig: OpenClawConfig = {
+/** Config with ElevenLabs enabled (chat + TTS). */
+const mockConfigWithTTS: OpenClawConfig = {
   instanceName: 'TestClaw',
   skribbyApiKey: 'sk-skribby-test',
   elevenLabsApiKey: 'sk-eleven-test',
-  anthropicApiKey: 'sk-ant-test',
+  geminiApiKey: 'gemini-test-key',
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,
   telegramChatId: null,
   confidenceThreshold: 0.85,
+};
+
+/** Config without ElevenLabs (chat only, no TTS). */
+const mockConfigChatOnly: OpenClawConfig = {
+  ...mockConfigWithTTS,
+  elevenLabsApiKey: null,
 };
 
 const BOT_ID = 'bot-123';
@@ -71,24 +78,93 @@ function fakeAudioStream(data: Uint8Array): ReadableStream<Uint8Array> {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// sendChatMessage
 // ---------------------------------------------------------------------------
 
-describe('speak', () => {
+describe('sendChatMessage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAxiosPost.mockResolvedValue({ status: 200 });
+  });
+
+  it('posts text to Skribby chat-message endpoint', async () => {
+    await sendChatMessage('Hello meeting', mockConfigWithTTS, BOT_ID);
+
+    expect(mockAxiosPost).toHaveBeenCalledOnce();
+    const [url, body, opts] = mockAxiosPost.mock.calls[0];
+    expect(url).toBe('https://platform.skribby.io/api/v1/bot/bot-123/chat-message');
+    expect(body).toEqual({ message: 'Hello meeting' });
+    expect(opts.headers['Authorization']).toBe('Bearer sk-skribby-test');
+    expect(opts.headers['Content-Type']).toBe('application/json');
+  });
+
+  it('skips when text is empty', async () => {
+    await sendChatMessage('', mockConfigWithTTS, BOT_ID);
+
+    expect(mockAxiosPost).not.toHaveBeenCalled();
+  });
+
+  it('skips when text is whitespace-only', async () => {
+    await sendChatMessage('   \n\t  ', mockConfigWithTTS, BOT_ID);
+
+    expect(mockAxiosPost).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when Skribby chat API fails (silent degradation)', async () => {
+    mockAxiosPost.mockRejectedValueOnce(new Error('Skribby 503'));
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(sendChatMessage('Hello', mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('sendChatMessage() failed'),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it('handles non-Error thrown values gracefully', async () => {
+    mockAxiosPost.mockRejectedValueOnce('string error');
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(sendChatMessage('Hello', mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown error'),
+    );
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// respond
+// ---------------------------------------------------------------------------
+
+describe('respond', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAxiosPost.mockResolvedValue({ status: 200 });
   });
 
   // -------------------------------------------------------------------------
-  // Happy path
+  // Chat + TTS (elevenLabsApiKey set)
   // -------------------------------------------------------------------------
 
-  it('generates TTS audio and posts it to Skribby', async () => {
+  it('sends chat message and TTS audio when elevenLabsApiKey is set', async () => {
     const audioBytes = new Uint8Array([0x49, 0x44, 0x33]); // fake MP3 header
     mockConvert.mockResolvedValueOnce(fakeAudioStream(audioBytes));
 
-    await speak('Hello meeting', mockConfig, BOT_ID);
+    await respond('Hello meeting', mockConfigWithTTS, BOT_ID);
+
+    // Chat message sent first
+    const chatCall = mockAxiosPost.mock.calls.find(
+      (call) => (call[0] as string).includes('chat-message'),
+    );
+    expect(chatCall).toBeDefined();
+    expect(chatCall![1]).toEqual({ message: 'Hello meeting' });
 
     // ElevenLabs client constructed with API key
     expect(ElevenLabsClient).toHaveBeenCalledWith({
@@ -107,30 +183,47 @@ describe('speak', () => {
     );
 
     // Audio buffer posted to Skribby speak endpoint
+    const speakCall = mockAxiosPost.mock.calls.find(
+      (call) => (call[0] as string).includes('/speak'),
+    );
+    expect(speakCall).toBeDefined();
+    expect(Buffer.isBuffer(speakCall![1])).toBe(true);
+    expect(speakCall![2].headers['Content-Type']).toBe('audio/mpeg');
+  });
+
+  // -------------------------------------------------------------------------
+  // Chat only (elevenLabsApiKey null)
+  // -------------------------------------------------------------------------
+
+  it('sends chat message but skips TTS when elevenLabsApiKey is null', async () => {
+    await respond('Hello meeting', mockConfigChatOnly, BOT_ID);
+
+    // Chat message sent
     expect(mockAxiosPost).toHaveBeenCalledOnce();
-    const [url, body, opts] = mockAxiosPost.mock.calls[0];
-    expect(url).toBe('https://platform.skribby.io/api/v1/bot/bot-123/speak');
-    expect(Buffer.isBuffer(body)).toBe(true);
-    expect(opts.headers['Authorization']).toBe('Bearer sk-skribby-test');
-    expect(opts.headers['Content-Type']).toBe('audio/mpeg');
+    const [url] = mockAxiosPost.mock.calls[0];
+    expect(url).toContain('chat-message');
+
+    // No TTS
+    expect(mockConvert).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
   // Empty text
   // -------------------------------------------------------------------------
 
-  it('skips without API call when text is empty', async () => {
-    await speak('', mockConfig, BOT_ID);
+  it('skips both chat and TTS when text is empty', async () => {
+    await respond('', mockConfigWithTTS, BOT_ID);
 
-    expect(mockConvert).not.toHaveBeenCalled();
+    // sendChatMessage returns early for empty text
     expect(mockAxiosPost).not.toHaveBeenCalled();
+    expect(mockConvert).not.toHaveBeenCalled();
   });
 
-  it('skips without API call when text is whitespace-only', async () => {
-    await speak('   \n\t  ', mockConfig, BOT_ID);
+  it('skips both chat and TTS when text is whitespace-only', async () => {
+    await respond('   \n\t  ', mockConfigWithTTS, BOT_ID);
 
-    expect(mockConvert).not.toHaveBeenCalled();
     expect(mockAxiosPost).not.toHaveBeenCalled();
+    expect(mockConvert).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
@@ -142,28 +235,30 @@ describe('speak', () => {
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(speak('Hello', mockConfig, BOT_ID)).resolves.toBeUndefined();
+    await expect(respond('Hello', mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('ElevenLabs rate limit'),
     );
-    expect(mockAxiosPost).not.toHaveBeenCalled();
 
     consoleSpy.mockRestore();
   });
 
   // -------------------------------------------------------------------------
-  // Silent degradation: Skribby failure
+  // Silent degradation: Skribby TTS upload failure
   // -------------------------------------------------------------------------
 
   it('does not throw when Skribby audio POST fails', async () => {
     const audioBytes = new Uint8Array([0xff, 0xfb]);
     mockConvert.mockResolvedValueOnce(fakeAudioStream(audioBytes));
-    mockAxiosPost.mockRejectedValueOnce(new Error('Skribby 503'));
+    // First call (chat-message) succeeds, second call (speak) fails
+    mockAxiosPost
+      .mockResolvedValueOnce({ status: 200 })
+      .mockRejectedValueOnce(new Error('Skribby 503'));
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(speak('Hello', mockConfig, BOT_ID)).resolves.toBeUndefined();
+    await expect(respond('Hello', mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Skribby 503'),
@@ -173,15 +268,15 @@ describe('speak', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Silent degradation: non-Error thrown
+  // Silent degradation: non-Error thrown in TTS
   // -------------------------------------------------------------------------
 
-  it('handles non-Error thrown values gracefully', async () => {
+  it('handles non-Error thrown values gracefully in TTS path', async () => {
     mockConvert.mockRejectedValueOnce('string error');
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(speak('Hello', mockConfig, BOT_ID)).resolves.toBeUndefined();
+    await expect(respond('Hello', mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Unknown error'),
@@ -191,14 +286,14 @@ describe('speak', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Long text warning
+  // Long text truncation (TTS path)
   // -------------------------------------------------------------------------
 
-  it('silently truncates text exceeding 200 characters', async () => {
+  it('silently truncates text exceeding 200 characters for TTS', async () => {
     const longText = 'A'.repeat(250);
     mockConvert.mockResolvedValueOnce(fakeAudioStream(new Uint8Array([0x00])));
 
-    await speak(longText, mockConfig, BOT_ID);
+    await respond(longText, mockConfigWithTTS, BOT_ID);
 
     expect(mockConvert).toHaveBeenCalledOnce();
     const callArgs = mockConvert.mock.calls[0][1];
@@ -206,11 +301,11 @@ describe('speak', () => {
     expect(callArgs.text).toBe('A'.repeat(200));
   });
 
-  it('does not truncate text within 200 characters', async () => {
+  it('does not truncate text within 200 characters for TTS', async () => {
     const shortText = 'A'.repeat(100);
     mockConvert.mockResolvedValueOnce(fakeAudioStream(new Uint8Array([0x00])));
 
-    await speak(shortText, mockConfig, BOT_ID);
+    await respond(shortText, mockConfigWithTTS, BOT_ID);
 
     expect(mockConvert).toHaveBeenCalledOnce();
     const callArgs = mockConvert.mock.calls[0][1];
@@ -229,25 +324,46 @@ describe('speakGreeting', () => {
     mockAxiosPost.mockResolvedValue({ status: 200 });
   });
 
-  it('speaks a greeting that includes the instance name', async () => {
+  it('sends a greeting via respond that includes the instance name', async () => {
     mockConvert.mockResolvedValueOnce(
       fakeAudioStream(new Uint8Array([0x00])),
     );
 
-    await speakGreeting(mockConfig, BOT_ID);
+    await speakGreeting(mockConfigWithTTS, BOT_ID);
 
+    // Chat message should include the instance name
+    const chatCall = mockAxiosPost.mock.calls.find(
+      (call) => (call[0] as string).includes('chat-message'),
+    );
+    expect(chatCall).toBeDefined();
+    expect((chatCall![1] as { message: string }).message).toContain('TestClaw');
+    expect((chatCall![1] as { message: string }).message).toContain('action items');
+
+    // TTS should also be called (elevenLabsApiKey is set)
     expect(mockConvert).toHaveBeenCalledOnce();
     const callArgs = mockConvert.mock.calls[0][1];
     expect(callArgs.text).toContain('TestClaw');
     expect(callArgs.text).toContain('action items');
   });
 
-  it('does not throw when underlying speak fails', async () => {
+  it('sends greeting via chat only when elevenLabsApiKey is null', async () => {
+    await speakGreeting(mockConfigChatOnly, BOT_ID);
+
+    // Chat message sent
+    expect(mockAxiosPost).toHaveBeenCalledOnce();
+    const [url] = mockAxiosPost.mock.calls[0];
+    expect(url).toContain('chat-message');
+
+    // No TTS
+    expect(mockConvert).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when underlying respond fails', async () => {
     mockConvert.mockRejectedValueOnce(new Error('network down'));
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(speakGreeting(mockConfig, BOT_ID)).resolves.toBeUndefined();
+    await expect(speakGreeting(mockConfigWithTTS, BOT_ID)).resolves.toBeUndefined();
 
     consoleSpy.mockRestore();
   });
