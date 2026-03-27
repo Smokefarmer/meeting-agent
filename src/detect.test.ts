@@ -5,20 +5,14 @@ import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
 import type { OpenClawConfig } from './config.js';
 
 // ---------------------------------------------------------------------------
-// Mock Gemini SDK
+// Mock OpenClaw LLM
 // ---------------------------------------------------------------------------
 
-const mockGenerateContent = vi.fn();
+const mockInferWithOpenClaw = vi.fn();
 
-vi.mock('@google/generative-ai', () => {
-  return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-      getGenerativeModel: vi.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
-      }),
-    })),
-  };
-});
+vi.mock('./openclaw-llm.js', () => ({
+  inferWithOpenClaw: (...args: unknown[]) => mockInferWithOpenClaw(...args),
+}));
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -28,19 +22,14 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test',
   recallApiKey: 'sk-test',
   elevenLabsApiKey: 'sk-test',
-  geminiApiKey: 'sk-test-key',
+  openclawGatewayPort: 18789,
+  openclawHooksToken: 'test-token',
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,
   telegramChatId: null,
   confidenceThreshold: 0.85,
 };
-
-function makeGeminiResponse(text: string) {
-  return {
-    response: { text: () => text },
-  };
-}
 
 // ---------------------------------------------------------------------------
 // parseExtractionResponse
@@ -226,7 +215,7 @@ describe('parseExtractionResponse', () => {
 
 describe('extractIntents', () => {
   beforeEach(() => {
-    mockGenerateContent.mockReset();
+    mockInferWithOpenClaw.mockReset();
   });
 
   it('filters intents by confidence threshold', async () => {
@@ -238,7 +227,7 @@ describe('extractIntents', () => {
       ],
     });
 
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     const result = await extractIntents('Some transcript text', mockConfig);
 
@@ -260,44 +249,55 @@ describe('extractIntents', () => {
     const result = await extractIntents('', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithOpenClaw).not.toHaveBeenCalled();
   });
 
   it('returns empty array for whitespace-only transcript without calling API', async () => {
     const result = await extractIntents('   \n\t  ', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithOpenClaw).not.toHaveBeenCalled();
   });
 
-  it('throws when Gemini API call fails', async () => {
-    mockGenerateContent.mockRejectedValueOnce(new Error('API unavailable'));
+  it('throws when OpenClaw API call fails', async () => {
+    mockInferWithOpenClaw.mockRejectedValueOnce(new Error('OpenClaw gateway not running on port 18789'));
 
     await expect(
       extractIntents('Some transcript', mockConfig),
-    ).rejects.toThrow('Intent extraction failed after 3 attempts');
+    ).rejects.toThrow('OpenClaw gateway not running');
   });
 
-  it('sends transcript to Gemini generateContent', async () => {
+  it('sends prompt containing system instructions and wrapped transcript', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await extractIntents('Test transcript', mockConfig);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
-    expect(callArg).toContain('Test transcript');
+    expect(mockInferWithOpenClaw).toHaveBeenCalledOnce();
+    const prompt = mockInferWithOpenClaw.mock.calls[0][0] as string;
+    expect(prompt).toContain(EXTRACTION_SYSTEM_PROMPT);
+    expect(prompt).toContain('<transcript>');
+    expect(prompt).toContain('Test transcript');
   });
 
   it('wraps transcript in <transcript> tags', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     const transcript = 'Alice said hello';
     await extractIntents(transcript, mockConfig);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
-    expect(callArg).toBe(wrapTranscript(transcript));
+    expect(mockInferWithOpenClaw).toHaveBeenCalledOnce();
+    const prompt = mockInferWithOpenClaw.mock.calls[0][0] as string;
+    expect(prompt).toContain(wrapTranscript(transcript));
+  });
+
+  it('passes config to inferWithOpenClaw', async () => {
+    const responseJson = JSON.stringify({ items: [] });
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
+
+    await extractIntents('text', mockConfig);
+
+    expect(mockInferWithOpenClaw).toHaveBeenCalledWith(expect.any(String), mockConfig);
   });
 });

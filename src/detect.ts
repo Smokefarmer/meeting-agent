@@ -1,18 +1,14 @@
 /**
- * Google Gemini intent extraction from transcript chunks.
- * Uses gemini-2.0-flash — free tier, fast, good structured extraction.
+ * Intent extraction from transcript chunks via OpenClaw built-in LLM.
+ * Uses the OpenClaw hooks API — no external API key needed.
  */
 
 import { randomUUID } from 'node:crypto';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { z } from 'zod';
 import type { Intent } from './models.js';
 import type { OpenClawConfig } from './config.js';
+import { inferWithOpenClaw } from './openclaw-llm.js';
 import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
-
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 1000;
 
 const IntentTypeEnum = z.enum(['BUG', 'FEATURE', 'TODO', 'DECISION', 'MEETING_REQUEST']);
 const PriorityEnum = z.enum(['low', 'medium', 'high', 'critical']);
@@ -34,7 +30,7 @@ const ExtractionResponseSchema = z.object({
 export type RawIntent = z.infer<typeof RawIntentSchema>;
 
 /**
- * Extract intents from a transcript chunk using Gemini Flash.
+ * Extract intents from a transcript chunk using the OpenClaw LLM.
  * Returns only intents above the configured confidence threshold.
  */
 export async function extractIntents(
@@ -43,46 +39,13 @@ export async function extractIntents(
 ): Promise<Intent[]> {
   if (transcriptChunk.trim().length === 0) return [];
 
-  const text = await callWithRetry(transcriptChunk, config.geminiApiKey);
+  const prompt = EXTRACTION_SYSTEM_PROMPT + '\n\n' + wrapTranscript(transcriptChunk);
+  const text = await inferWithOpenClaw(prompt, config);
   const parsed = parseExtractionResponse(text);
 
   return parsed.items
     .filter((item) => item.confidence >= config.confidenceThreshold)
     .map((item) => rawToIntent(item));
-}
-
-async function callWithRetry(chunk: string, apiKey: string): Promise<string> {
-  let lastError: unknown;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
-    systemInstruction: EXTRACTION_SYSTEM_PROMPT,
-  });
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const result = await model.generateContent(wrapTranscript(chunk));
-      return result.response.text();
-    } catch (err) {
-      lastError = err;
-      if (attempt < MAX_RETRIES - 1) {
-        await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
-      }
-    }
-  }
-
-  throw new Error(
-    `Intent extraction failed after ${MAX_RETRIES} attempts: ${safeErrorMessage(lastError)}`,
-  );
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
 }
 
 /**

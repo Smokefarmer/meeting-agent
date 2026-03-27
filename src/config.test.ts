@@ -10,7 +10,7 @@ import type { OpenClawConfig } from './config.js';
 function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
   process.env.RECALL_API_KEY = 'sk-recall-test';
-  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  // openclawGatewayPort and openclawHooksToken have defaults — no env vars needed
 }
 
 /** Remove all config-related env vars so tests start clean. */
@@ -19,7 +19,8 @@ function clearConfigEnvVars(): void {
     'OPENCLAW_INSTANCE_NAME',
     'RECALL_API_KEY',
     'ELEVENLABS_API_KEY',
-    'GEMINI_API_KEY',
+    'OPENCLAW_GATEWAY_PORT',
+    'OPENCLAW_HOOKS_TOKEN',
     'GITHUB_TOKEN',
     'GITHUB_REPO',
     'TELEGRAM_BOT_TOKEN',
@@ -55,7 +56,8 @@ describe('loadConfig', () => {
       expect(config.instanceName).toBe('test-bot');
       expect(config.recallApiKey).toBe('sk-recall-test');
       expect(config.elevenLabsApiKey).toBe('sk-eleven-test');
-      expect(config.geminiApiKey).toBe('gemini-test-key');
+      expect(config.openclawGatewayPort).toBe(18789);
+      expect(config.openclawHooksToken).toBe('meetingclaw-internal');
       expect(config.githubToken).toBe('ghp-test-token');
       expect(config.githubRepo).toBe('org/repo');
       expect(config.telegramBotToken).toBe('tg-bot-test');
@@ -68,7 +70,7 @@ describe('loadConfig', () => {
     it('throws ZodError when OPENCLAW_INSTANCE_NAME is missing', () => {
       process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
+      // openclawGatewayPort and openclawHooksToken have defaults — no env vars needed
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
@@ -76,7 +78,7 @@ describe('loadConfig', () => {
     it('throws ZodError when RECALL_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
+      // openclawGatewayPort and openclawHooksToken have defaults — no env vars needed
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
@@ -84,19 +86,11 @@ describe('loadConfig', () => {
     it('defaults elevenLabsApiKey to null when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.RECALL_API_KEY = 'sk-recall-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
+      // openclawGatewayPort and openclawHooksToken have defaults — no env vars needed
 
       const config = loadConfig();
 
       expect(config.elevenLabsApiKey).toBeNull();
-    });
-
-    it('throws ZodError when GEMINI_API_KEY is missing', () => {
-      process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
-      process.env.RECALL_API_KEY = 'sk-recall-test';
-      process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-
-      expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('throws ZodError when all required vars are missing', () => {
@@ -113,7 +107,7 @@ describe('loadConfig', () => {
         const paths = zodErr.issues.map((issue) => issue.path[0]);
         expect(paths).toContain('instanceName');
         expect(paths).toContain('recallApiKey');
-        expect(paths).toContain('geminiApiKey');
+        // openclawGatewayPort and openclawHooksToken have defaults, so they won't appear
       }
     });
   });
@@ -125,6 +119,40 @@ describe('loadConfig', () => {
       const config = loadConfig();
 
       expect(config.confidenceThreshold).toBe(0.85);
+    });
+
+    it('defaults openclawGatewayPort to 18789 when env var is not set', () => {
+      setRequiredEnvVars();
+
+      const config = loadConfig();
+
+      expect(config.openclawGatewayPort).toBe(18789);
+    });
+
+    it('defaults openclawHooksToken to meetingclaw-internal when env var is not set', () => {
+      setRequiredEnvVars();
+
+      const config = loadConfig();
+
+      expect(config.openclawHooksToken).toBe('meetingclaw-internal');
+    });
+
+    it('uses custom openclawGatewayPort when env var is set', () => {
+      setRequiredEnvVars();
+      process.env.OPENCLAW_GATEWAY_PORT = '9999';
+
+      const config = loadConfig();
+
+      expect(config.openclawGatewayPort).toBe(9999);
+    });
+
+    it('uses custom openclawHooksToken when env var is set', () => {
+      setRequiredEnvVars();
+      process.env.OPENCLAW_HOOKS_TOKEN = 'custom-token';
+
+      const config = loadConfig();
+
+      expect(config.openclawHooksToken).toBe('custom-token');
     });
 
     it('defaults nullable fields to null when env vars are not set', () => {
@@ -197,7 +225,8 @@ describe('loadConfig', () => {
       expect(
         config.elevenLabsApiKey === null || typeof config.elevenLabsApiKey === 'string',
       ).toBe(true);
-      expect(typeof config.geminiApiKey).toBe('string');
+      expect(typeof config.openclawGatewayPort).toBe('number');
+      expect(typeof config.openclawHooksToken).toBe('string');
       expect(typeof config.confidenceThreshold).toBe('number');
     });
   });

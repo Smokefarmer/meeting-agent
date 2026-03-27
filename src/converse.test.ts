@@ -12,20 +12,14 @@ import type { OpenClawConfig } from './config.js';
 import type { TranscriptSegment, Intent, CreatedIssue } from './models.js';
 
 // ---------------------------------------------------------------------------
-// Mock Gemini SDK
+// Mock OpenClaw LLM
 // ---------------------------------------------------------------------------
 
-const mockGenerateContent = vi.fn();
+const mockInferWithOpenClaw = vi.fn();
 
-vi.mock('@google/generative-ai', () => {
-  return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-      getGenerativeModel: vi.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
-      }),
-    })),
-  };
-});
+vi.mock('./openclaw-llm.js', () => ({
+  inferWithOpenClaw: (...args: unknown[]) => mockInferWithOpenClaw(...args),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock speak module
@@ -48,7 +42,8 @@ function makeConfig(): OpenClawConfig {
     instanceName: 'MeetingClaw',
     recallApiKey: 'sk-test',
     elevenLabsApiKey: 'sk-test',
-    geminiApiKey: 'sk-test-key',
+    openclawGatewayPort: 18789,
+    openclawHooksToken: 'test-token',
     githubToken: null,
     githubRepo: null,
     telegramBotToken: null,
@@ -68,9 +63,7 @@ function makeSession(config?: OpenClawConfig): MeetingSession {
   return session;
 }
 
-function makeGeminiResponse(text: string) {
-  return { response: { text: () => text } };
-}
+// No helper needed — mockInferWithOpenClaw returns string directly
 
 // ---------------------------------------------------------------------------
 // detectWakeWord
@@ -248,7 +241,7 @@ describe('parseConversationResponse', () => {
 
 describe('handleAddressedSpeech', () => {
   beforeEach(() => {
-    mockGenerateContent.mockReset();
+    mockInferWithOpenClaw.mockReset();
     mockRespond.mockReset();
     mockRespond.mockResolvedValue(undefined);
   });
@@ -259,11 +252,11 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: 'We decided to use TypeScript.',
     });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('what was decided?', session, config);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
+    expect(mockInferWithOpenClaw).toHaveBeenCalledOnce();
     expect(mockRespond).toHaveBeenCalledOnce();
     expect(mockRespond).toHaveBeenCalledWith(
       'We decided to use TypeScript.',
@@ -278,7 +271,7 @@ describe('handleAddressedSpeech', () => {
 
     await handleAddressedSpeech('', session, config);
 
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithOpenClaw).not.toHaveBeenCalled();
     expect(mockRespond).not.toHaveBeenCalled();
   });
 
@@ -288,7 +281,7 @@ describe('handleAddressedSpeech', () => {
 
     await handleAddressedSpeech('   ', session, config);
 
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithOpenClaw).not.toHaveBeenCalled();
     expect(mockRespond).not.toHaveBeenCalled();
   });
 
@@ -299,14 +292,14 @@ describe('handleAddressedSpeech', () => {
 
     await handleAddressedSpeech('what happened?', session, config);
 
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithOpenClaw).not.toHaveBeenCalled();
     expect(mockRespond).not.toHaveBeenCalled();
   });
 
   it('catches API errors and does not throw', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockGenerateContent.mockRejectedValueOnce(new Error('API rate limited'));
+    mockInferWithOpenClaw.mockRejectedValueOnce(new Error('API rate limited'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
@@ -324,7 +317,7 @@ describe('handleAddressedSpeech', () => {
   it('catches non-Error exceptions and does not throw', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockGenerateContent.mockRejectedValueOnce('string error');
+    mockInferWithOpenClaw.mockRejectedValueOnce('string error');
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
@@ -345,7 +338,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: longAnswer,
     });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('give me details', session, config);
 
@@ -363,7 +356,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: exactAnswer,
     });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('short question', session, config);
 
@@ -379,7 +372,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: 'Test answer.',
     });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
     mockRespond.mockRejectedValueOnce(new Error('TTS failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -401,38 +394,50 @@ describe('handleAddressedSpeech', () => {
 
 describe('generateResponse', () => {
   beforeEach(() => {
-    mockGenerateContent.mockReset();
+    mockInferWithOpenClaw.mockReset();
   });
 
-  it('sends question to Gemini generateContent', async () => {
+  it('sends prompt with system instructions, context, and question', async () => {
     const config = makeConfig();
     const session = makeSession(config);
     const responseJson = JSON.stringify({ answer: 'Answer.' });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await generateResponse('test question', session, config);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
-    expect(callArg).toContain('test question');
+    expect(mockInferWithOpenClaw).toHaveBeenCalledOnce();
+    const prompt = mockInferWithOpenClaw.mock.calls[0][0] as string;
+    expect(prompt).toContain('test question');
+    expect(prompt).toContain(CONVERSATION_SYSTEM_PROMPT);
   });
 
-  it('includes meeting context and question in the user message', async () => {
+  it('includes meeting context and question in the prompt', async () => {
     const config = makeConfig();
     const session = makeSession(config);
     const responseJson = JSON.stringify({ answer: 'Here you go.' });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     await generateResponse('what decisions were made?', session, config);
 
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
-    expect(callArg).toContain('Question: what decisions were made?');
+    const prompt = mockInferWithOpenClaw.mock.calls[0][0] as string;
+    expect(prompt).toContain('Question: what decisions were made?');
   });
 
-  it('throws when Gemini API call fails', async () => {
+  it('passes config to inferWithOpenClaw', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockGenerateContent.mockRejectedValueOnce(new Error('API rate limited'));
+    const responseJson = JSON.stringify({ answer: 'ok' });
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
+
+    await generateResponse('test', session, config);
+
+    expect(mockInferWithOpenClaw).toHaveBeenCalledWith(expect.any(String), config);
+  });
+
+  it('throws when OpenClaw API call fails', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    mockInferWithOpenClaw.mockRejectedValueOnce(new Error('API rate limited'));
 
     await expect(
       generateResponse('test', session, config),
@@ -445,7 +450,7 @@ describe('generateResponse', () => {
     const responseJson = JSON.stringify({
       answer: 'Two bugs were found.',
     });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithOpenClaw.mockResolvedValueOnce(responseJson);
 
     const result = await generateResponse('any bugs?', session, config);
 
