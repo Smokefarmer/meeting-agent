@@ -29,6 +29,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@elevenlabs/elevenlabs-js": "^2.40.0",
     "@octokit/rest": "^21.1.0",
+    "@skribby/sdk": "^0.5.1",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
     "ws": "^8.18.0",

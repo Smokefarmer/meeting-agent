@@ -24,7 +24,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     throw new Error('Cannot run pipeline: session has no botId (join step did not complete)');
   }
   if (!session.websocketUrl) {
-    throw new Error('Cannot run pipeline: session has no websocketUrl (join step did not return WebSocket URL — ensure a realtime transcription model is used)');
+    console.warn('No websocketUrl — real-time transcription unavailable (standard model). Bot is in the call but will not stream live transcript.');
   }
 
   await speakGreeting(config, session.botId);
@@ -67,7 +67,13 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
   };
 
   try {
-    await streamTranscript(session.websocketUrl, config.skribbyApiKey, onSegment);
+    if (session.websocketUrl) {
+      await streamTranscript(session.websocketUrl, config.skribbyApiKey, onSegment);
+    } else {
+      // Standard model — no real-time stream. Bot is in the call but transcript arrives post-meeting.
+      console.log('Pipeline: waiting for meeting to end (no real-time stream)...');
+      await new Promise<void>((resolve) => setTimeout(resolve, 60 * 60 * 1000)); // wait up to 1h
+    }
   } finally {
     session.end();
     try {
