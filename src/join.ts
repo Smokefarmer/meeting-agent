@@ -1,6 +1,6 @@
 /**
  * Skribby API: create bot and join a Google Meet call.
- * Issue #1 — implementation shared between NostraAI (gateway) and Smokefarmer (join logic).
+ * Returns bot ID and WebSocket URL for real-time transcript streaming.
  */
 
 import axios from 'axios';
@@ -9,25 +9,31 @@ import { z } from 'zod';
 const SKRIBBY_API_BASE = 'https://platform.skribby.io/api/v1';
 
 /**
- * Zod schema for Skribby API response.
- * Skribby returns an id field for the bot.
+ * Zod schema for Skribby API bot creation response.
  */
 const SkribbyJoinResponseSchema = z.object({
   id: z.string().min(1),
+  websocket_url: z.string().url().optional(),
+  websocket_read_only_url: z.string().url().optional(),
 });
+
+export interface JoinResult {
+  botId: string;
+  websocketUrl: string | null;
+}
 
 export async function joinMeeting(
   meetingUrl: string,
   botName: string,
   apiKey: string,
-): Promise<string> {
+): Promise<JoinResult> {
   const response = await axios.post(
     `${SKRIBBY_API_BASE}/bot`,
     {
       meeting_url: meetingUrl,
       bot_name: botName,
       service: 'gmeet',
-      transcription_model: 'openai/whisper-large-v3',
+      transcription_model: 'openai/whisper-large-v3-realtime',
     },
     {
       headers: {
@@ -39,5 +45,8 @@ export async function joinMeeting(
   );
 
   const parsed = SkribbyJoinResponseSchema.parse(response.data);
-  return parsed.id;
+  return {
+    botId: parsed.id,
+    websocketUrl: parsed.websocket_url ?? parsed.websocket_read_only_url ?? null,
+  };
 }

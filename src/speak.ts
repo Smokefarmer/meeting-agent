@@ -11,8 +11,8 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import axios from 'axios';
 import type { OpenClawConfig } from './config.js';
 
-/** Default voice — "Rachel", a clear female narration voice. */
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+/** Default voice — "Adam", available on ElevenLabs free tier. */
+const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB';
 
 /** Model optimised for lowest latency. */
 const TTS_MODEL_ID = 'eleven_turbo_v2_5';
