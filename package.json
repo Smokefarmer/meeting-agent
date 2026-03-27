@@ -31,10 +31,12 @@
     "@octokit/rest": "^21.1.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
+    "express": "^5.2.1",
     "ws": "^8.18.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
