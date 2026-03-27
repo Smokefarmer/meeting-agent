@@ -7,7 +7,7 @@ This file provides guidelines for Claude agents working on this codebase.
 MeetingAgent is an OpenClaw Skill that transforms meeting audio into automated actions:
 
 - **Core**: TypeScript (Node.js 22) as an OpenClaw Skill
-- **Transcription**: Skribby WebSocket for live transcripts
+- **Transcription**: Recall.ai WebSocket for live transcripts
 - **Extraction**: Claude Haiku for intent detection
 - **TTS**: ElevenLabs for voice responses
 - **Integrations**: GitHub, CalDAV, Telegram, Email
@@ -30,7 +30,7 @@ Always read these before making changes:
 
 - **Language**: TypeScript (Node.js 22)
 - **Entry Point**: OpenClaw skill entry point
-- **Transcription**: Skribby WebSocket (live call transcripts)
+- **Transcription**: Recall.ai WebSocket (live call transcripts)
 - **LLM**: Anthropic Claude Haiku via @anthropic-ai/sdk
 - **Validation**: Zod (runtime schema validation)
 - **Database**: None — in-memory MeetingSession only
@@ -53,8 +53,8 @@ meeting-agent/
 │   ├── session.ts        # MeetingSession class
 │   ├── models.ts         # TypeScript interfaces
 │   ├── config.ts         # Zod config loader
-│   ├── join.ts           # Skribby API: join call
-│   ├── listen.ts         # Skribby WebSocket transcript
+│   ├── join.ts           # Recall.ai API: join call
+│   ├── listen.ts         # Recall.ai WebSocket transcript
 │   ├── detect.ts         # Claude Haiku extraction
 │   ├── dedup.ts          # Intent deduplication
 │   ├── route.ts          # Intent → action router
@@ -84,7 +84,7 @@ All configuration is loaded from environment variables, validated by Zod in `src
 ```bash
 # .env.example
 ANTHROPIC_API_KEY=sk-ant-...
-SKRIBBY_API_KEY=...
+RECALL_API_KEY=...
 ELEVENLABS_API_KEY=...
 GITHUB_TOKEN=ghp_...
 GITHUB_DEFAULT_REPO=owner/repo
@@ -162,7 +162,7 @@ src/
 ### Test Requirements
 
 1. **Unit tests** for all business logic
-2. **Mock external APIs** (GitHub, Skribby, LLM, ElevenLabs)
+2. **Mock external APIs** (GitHub, Recall.ai, LLM, ElevenLabs)
 3. **Integration tests** for full pipeline (with mocks)
 4. **Fixtures** for sample transcripts and intents
 
@@ -195,11 +195,11 @@ npx vitest
 3. **Graceful errors** - Catch exceptions, return user-friendly messages to the caller
 4. **Session lifecycle** - Create MeetingSession on start, persist summary on end
 
-### Transcription Layer (Skribby)
+### Transcription Layer (Recall.ai)
 
-1. **WebSocket streaming** - Connect to Skribby WebSocket for real-time transcript chunks
+1. **WebSocket streaming** - Connect to Recall.ai WebSocket for real-time transcript chunks
 2. **Reconnection logic** - Handle disconnects with exponential backoff
-3. **Speaker attribution** - Use Skribby speaker labels when available
+3. **Speaker attribution** - Use Recall.ai speaker labels when available
 
 ### Extraction Layer (LLM)
 

@@ -1,49 +1,37 @@
 /**
- * Skribby WebSocket: receive live transcript stream.
- * Connects to the websocket_url returned by Skribby bot creation response.
- * Handles Skribby's event envelope: { type: "transcript", data: { ... } }
+ * Recall.ai WebSocket: receive live transcript stream.
+ * Connects to the websocket_url provided by the Recall.ai bot.
+ * Handles Recall.ai event envelope: { type: "transcript", data: { ... } }
  */
 
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
-import type { MeetingSession } from './session.js';
 
 export type OnSegmentCallback = (segment: TranscriptSegment) => Promise<void>;
 
-/**
- * Send an action to the meeting via the active WebSocket connection.
- * Used to send chat messages back into the meeting.
- * Never throws — silent degradation if WS not available.
- */
-export function sendWsAction(session: MeetingSession, action: string, data: Record<string, unknown>): void {
-  try {
-    if (!session.wsConnection || session.wsConnection.readyState !== WebSocket.OPEN) {
-      console.warn('sendWsAction: no active WebSocket connection');
-      return;
-    }
-    session.wsConnection.send(JSON.stringify({ action, data }));
-  } catch (err) {
-    console.error('sendWsAction failed:', err instanceof Error ? err.message : err);
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Zod schemas for Skribby WebSocket events
+// Zod schemas for Recall.ai WebSocket events
 // ---------------------------------------------------------------------------
 
-// Skribby wraps all events in { type, data }
-const SkribbyEventSchema = z.object({
+const RecallEventSchema = z.object({
   type: z.string(),
   data: z.unknown(),
 });
 
-// Transcript event data
-const SkribbyTranscriptDataSchema = z.object({
+const RecallWordSchema = z.object({
   text: z.string(),
-  speaker: z.string().nullable().optional().default(null),
-  timestamp: z.number().optional(),
-  is_final: z.boolean().optional(),
+  start_time: z.number(),
+  end_time: z.number(),
+});
+
+const RecallTranscriptDataSchema = z.object({
+  original_transcript_id: z.number(),
+  speaker: z.string().nullable().optional(),
+  speaker_id: z.number().optional(),
+  words: z.array(RecallWordSchema),
+  is_final: z.boolean(),
+  language: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -59,8 +47,8 @@ const CLEAN_CLOSE_CODE = 1000;
 // ---------------------------------------------------------------------------
 
 /**
- * Open a WebSocket to Skribby and stream transcript segments to the callback.
- * Uses the websocketUrl returned from joinMeeting() — not a hardcoded URL.
+ * Open a WebSocket to Recall.ai and stream transcript segments to the callback.
+ * Uses the websocketUrl provided by the Recall.ai bot.
  *
  * - Validates every incoming message with Zod before forwarding.
  * - Auto-reconnects with exponential backoff (1s, 2s, 4s) up to 3 retries.
@@ -71,18 +59,14 @@ export async function streamTranscript(
   websocketUrl: string,
   apiKey: string,
   onSegment: OnSegmentCallback,
-  session?: MeetingSession,
 ): Promise<void> {
   let retries = 0;
 
   const connect = (): Promise<void> =>
     new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(websocketUrl, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: { Authorization: `Token ${apiKey}` },
       });
-
-      // Store WS on session so speak.ts can send actions back
-      if (session) session.wsConnection = ws;
 
       ws.on('message', (raw: WebSocket.RawData) => {
         handleMessage(raw, onSegment);
@@ -119,20 +103,25 @@ export async function streamTranscript(
 function handleMessage(raw: WebSocket.RawData, onSegment: OnSegmentCallback): void {
   try {
     const parsed: unknown = JSON.parse(String(raw));
-    const event = SkribbyEventSchema.parse(parsed);
+    const event = RecallEventSchema.parse(parsed);
 
-    // Only process transcript events
     if (event.type !== 'transcript') return;
 
-    const transcriptData = SkribbyTranscriptDataSchema.parse(event.data);
+    const transcriptData = RecallTranscriptDataSchema.parse(event.data);
 
     // Only forward final segments to avoid duplicates from partial transcripts
-    if (transcriptData.is_final === false) return;
+    if (!transcriptData.is_final) return;
+
+    // Skip empty word arrays
+    if (transcriptData.words.length === 0) return;
+
+    const text = transcriptData.words.map((w) => w.text).join(' ');
+    const timestamp = transcriptData.words[0].start_time;
 
     const segment: TranscriptSegment = {
-      text: transcriptData.text,
+      text,
       speaker: transcriptData.speaker ?? null,
-      timestamp: transcriptData.timestamp ?? Date.now(),
+      timestamp,
     };
 
     onSegment(segment).catch((err: unknown) => {

@@ -26,7 +26,7 @@ vi.mock('@google/generative-ai', () => {
 
 const mockConfig: OpenClawConfig = {
   instanceName: 'test',
-  skribbyApiKey: 'sk-test',
+  recallApiKey: 'sk-test',
   elevenLabsApiKey: 'sk-test',
   geminiApiKey: 'sk-test-key',
   githubToken: null,

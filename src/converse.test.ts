@@ -46,7 +46,7 @@ vi.mock('./speak.js', () => {
 function makeConfig(): OpenClawConfig {
   return {
     instanceName: 'MeetingClaw',
-    skribbyApiKey: 'sk-test',
+    recallApiKey: 'sk-test',
     elevenLabsApiKey: 'sk-test',
     geminiApiKey: 'sk-test-key',
     githubToken: null,
@@ -269,7 +269,6 @@ describe('handleAddressedSpeech', () => {
       'We decided to use TypeScript.',
       config,
       'bot-123',
-      session,
     );
   });
 

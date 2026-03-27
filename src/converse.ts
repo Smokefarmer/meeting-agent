@@ -136,7 +136,7 @@ export async function handleAddressedSpeech(
       ? response.answer.slice(0, MAX_RESPONSE_LENGTH - 3) + '...'
       : response.answer;
 
-    await respond(spokenAnswer, config, session.botId, session);
+    await respond(spokenAnswer, config, session.botId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Q&A response failed:', message);

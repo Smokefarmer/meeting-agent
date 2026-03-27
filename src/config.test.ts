@@ -9,7 +9,7 @@ import type { OpenClawConfig } from './config.js';
 /** Set all required env vars to valid values. */
 function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
-  process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
+  process.env.RECALL_API_KEY = 'sk-recall-test';
   process.env.GEMINI_API_KEY = 'gemini-test-key';
 }
 
@@ -17,7 +17,7 @@ function setRequiredEnvVars(): void {
 function clearConfigEnvVars(): void {
   const keys = [
     'OPENCLAW_INSTANCE_NAME',
-    'SKRIBBY_API_KEY',
+    'RECALL_API_KEY',
     'ELEVENLABS_API_KEY',
     'GEMINI_API_KEY',
     'GITHUB_TOKEN',
@@ -53,7 +53,7 @@ describe('loadConfig', () => {
       const config = loadConfig();
 
       expect(config.instanceName).toBe('test-bot');
-      expect(config.skribbyApiKey).toBe('sk-skribby-test');
+      expect(config.recallApiKey).toBe('sk-recall-test');
       expect(config.elevenLabsApiKey).toBe('sk-eleven-test');
       expect(config.geminiApiKey).toBe('gemini-test-key');
       expect(config.githubToken).toBe('ghp-test-token');
@@ -66,14 +66,14 @@ describe('loadConfig', () => {
 
   describe('missing required vars', () => {
     it('throws ZodError when OPENCLAW_INSTANCE_NAME is missing', () => {
-      process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
+      process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
       process.env.GEMINI_API_KEY = 'gemini-test-key';
 
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
-    it('throws ZodError when SKRIBBY_API_KEY is missing', () => {
+    it('throws ZodError when RECALL_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
       process.env.GEMINI_API_KEY = 'gemini-test-key';
@@ -83,7 +83,7 @@ describe('loadConfig', () => {
 
     it('defaults elevenLabsApiKey to null when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
-      process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
+      process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.GEMINI_API_KEY = 'gemini-test-key';
 
       const config = loadConfig();
@@ -93,7 +93,7 @@ describe('loadConfig', () => {
 
     it('throws ZodError when GEMINI_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
-      process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
+      process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
 
       expect(() => loadConfig()).toThrow(ZodError);
@@ -112,7 +112,7 @@ describe('loadConfig', () => {
         const zodErr = err as ZodError;
         const paths = zodErr.issues.map((issue) => issue.path[0]);
         expect(paths).toContain('instanceName');
-        expect(paths).toContain('skribbyApiKey');
+        expect(paths).toContain('recallApiKey');
         expect(paths).toContain('geminiApiKey');
       }
     });
@@ -192,7 +192,7 @@ describe('loadConfig', () => {
 
       expect(config).toBeDefined();
       expect(typeof config.instanceName).toBe('string');
-      expect(typeof config.skribbyApiKey).toBe('string');
+      expect(typeof config.recallApiKey).toBe('string');
       // elevenLabsApiKey is nullable — string when set, null otherwise
       expect(
         config.elevenLabsApiKey === null || typeof config.elevenLabsApiKey === 'string',

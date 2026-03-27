@@ -1,25 +1,23 @@
 /**
- * Skribby API: create bot and join a Google Meet call.
+ * Recall.ai API: create bot and join a meeting call.
  * Returns bot ID and WebSocket URL for real-time transcript streaming.
  */
 
 import axios from 'axios';
 import { z } from 'zod';
 
-const SKRIBBY_API_BASE = 'https://platform.skribby.io/api/v1';
+const RECALL_API_BASE = 'https://us-east-1.recall.ai/api/v1';
 
 /**
- * Zod schema for Skribby API bot creation response.
+ * Zod schema for Recall.ai bot creation response.
  */
-const SkribbyJoinResponseSchema = z.object({
-  id: z.string().min(1),
-  websocket_url: z.string().url().nullable().optional(),
-  websocket_read_only_url: z.string().url().nullable().optional(),
+const RecallJoinResponseSchema = z.object({
+  id: z.string().uuid(),
 });
 
 export interface JoinResult {
   botId: string;
-  websocketUrl: string | null;
+  websocketUrl: string;
 }
 
 export async function joinMeeting(
@@ -28,25 +26,25 @@ export async function joinMeeting(
   apiKey: string,
 ): Promise<JoinResult> {
   const response = await axios.post(
-    `${SKRIBBY_API_BASE}/bot`,
+    `${RECALL_API_BASE}/bot/`,
     {
       meeting_url: meetingUrl,
       bot_name: botName,
-      service: 'gmeet',
-      transcription_model: 'deepgram/nova-2-realtime',
     },
     {
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Token ${apiKey}`,
         'Content-Type': 'application/json',
       },
       timeout: 30_000,
     },
   );
 
-  const parsed = SkribbyJoinResponseSchema.parse(response.data);
+  const parsed = RecallJoinResponseSchema.parse(response.data);
+  const websocketUrl = `wss://us-east-1.recall.ai/api/v1/bot/${parsed.id}/transcript`;
+
   return {
     botId: parsed.id,
-    websocketUrl: parsed.websocket_url ?? parsed.websocket_read_only_url ?? null,
+    websocketUrl,
   };
 }
