@@ -59,9 +59,11 @@ meeting-agent/
 │   ├── dedup.ts          # Intent deduplication
 │   ├── route.ts          # Intent → action router
 │   ├── speak.ts          # ElevenLabs TTS
+│   ├── converse.ts       # Interactive Q&A (wake-word + response)
 │   ├── summary.ts        # Meeting summary generator
 │   ├── pipeline.ts       # Main pipeline orchestrator
-│   └── prompts.ts        # LLM prompt templates
+│   ├── prompts.ts        # LLM prompt templates
+│   └── errors.ts         # Shared error utilities
 ├── data/meetings/        # Local summary files
 └── docs/                 # Planning docs
 ```

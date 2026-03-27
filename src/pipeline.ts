@@ -12,14 +12,10 @@ import { routeIntent } from './route.js';
 import { speakGreeting } from './speak.js';
 import { generateAndSendSummary } from './summary.js';
 import { detectWakeWord, handleAddressedSpeech } from './converse.js';
+import { safeErrorMessage } from './errors.js';
 
 const EXTRACTION_INTERVAL_MS = 30_000;
 const MIN_BUFFER_LENGTH = 100;
-
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
 
 export async function runPipeline(session: MeetingSession): Promise<void> {
   const { config } = session;

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { Intent } from './models.js';
 import type { OpenClawConfig } from './config.js';
 import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
+import { safeErrorMessage } from './errors.js';
 
 const HAIKU_MODEL = 'claude-3-haiku-20240307';
 const MAX_TOKENS = 2048;
@@ -104,11 +105,6 @@ function isRetryableError(err: unknown): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
 }
 
 /**

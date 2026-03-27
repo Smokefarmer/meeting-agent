@@ -7,11 +7,7 @@ import { loadConfig } from './config.js';
 import { MeetingSession } from './session.js';
 import { joinMeeting } from './join.js';
 import { runPipeline } from './pipeline.js';
-
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
+import { safeErrorMessage } from './errors.js';
 
 const MEET_URL_REGEX = /https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
 
