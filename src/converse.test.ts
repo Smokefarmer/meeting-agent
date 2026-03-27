@@ -38,6 +38,19 @@ vi.mock('./speak.js', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mock route module
+// ---------------------------------------------------------------------------
+
+const mockRouteIntent = vi.fn();
+
+vi.mock('./route.js', () => {
+  return {
+    routeIntent: (...args: unknown[]) => mockRouteIntent(...args),
+  };
+});
+
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -721,3 +734,134 @@ describe('buildMeetingContext', () => {
     expect(context).toContain('Recent transcript:');
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// handleAddressedSpeech — action execution
+// ---------------------------------------------------------------------------
+
+describe('handleAddressedSpeech — action execution', () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+    mockSpeak.mockReset();
+    mockRouteIntent.mockReset();
+    mockSpeak.mockResolvedValue(undefined);
+    mockRouteIntent.mockResolvedValue(undefined);
+  });
+
+  it('calls routeIntent with BUG intent when action is create_issue', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: "I'll create that issue for you.",
+      action: 'create_issue',
+      actionDetail: 'Login page broken on mobile',
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+
+    await handleAddressedSpeech('create an issue for the login bug', session, config);
+
+    // Wait for fire-and-forget to settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockRouteIntent).toHaveBeenCalledOnce();
+    const [intent] = mockRouteIntent.mock.calls[0] as [{ type: string; text: string; confidence: number }];
+    expect(intent.type).toBe('BUG');
+    expect(intent.text).toBe('Login page broken on mobile');
+    expect(intent.confidence).toBe(1.0);
+  });
+
+  it('calls routeIntent with MEETING_REQUEST intent when action is schedule_followup', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: "I'll schedule that follow-up.",
+      action: 'schedule_followup',
+      actionDetail: 'Team sync next Tuesday at 10am',
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+
+    await handleAddressedSpeech('schedule a follow-up for next Tuesday', session, config);
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockRouteIntent).toHaveBeenCalledOnce();
+    const [intent] = mockRouteIntent.mock.calls[0] as [{ type: string; text: string }];
+    expect(intent.type).toBe('MEETING_REQUEST');
+    expect(intent.text).toBe('Team sync next Tuesday at 10am');
+  });
+
+  it('does not call routeIntent when action is none', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: 'Three decisions were made.',
+      action: 'none',
+      actionDetail: null,
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+
+    await handleAddressedSpeech('what decisions were made?', session, config);
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockRouteIntent).not.toHaveBeenCalled();
+  });
+
+  it('does not call routeIntent when actionDetail is null even if action is set', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: 'Sure.',
+      action: 'create_issue',
+      actionDetail: null,
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+
+    await handleAddressedSpeech('create issue', session, config);
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockRouteIntent).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when routeIntent rejects for create_issue', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: "I'll try to create that issue.",
+      action: 'create_issue',
+      actionDetail: 'Some bug',
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+    mockRouteIntent.mockRejectedValueOnce(new Error('GitHub rate limit'));
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      handleAddressedSpeech('create an issue', session, config),
+    ).resolves.toBeUndefined();
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    consoleSpy.mockRestore();
+  });
+
+  it('still speaks the answer even when routeIntent fails', async () => {
+    const config = makeConfig();
+    const session = makeSession(config);
+    const responseJson = JSON.stringify({
+      answer: 'Creating that issue now.',
+      action: 'create_issue',
+      actionDetail: 'Critical crash on startup',
+    });
+    mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
+    mockRouteIntent.mockRejectedValueOnce(new Error('GitHub offline'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await handleAddressedSpeech('log the startup crash', session, config);
+
+    expect(mockSpeak).toHaveBeenCalledOnce();
+    expect(mockSpeak).toHaveBeenCalledWith('Creating that issue now.', config, 'bot-123');
+  });
+});
+
