@@ -98,7 +98,7 @@ describe('speak', () => {
     // TTS convert called with correct voice + model
     expect(mockConvert).toHaveBeenCalledOnce();
     expect(mockConvert).toHaveBeenCalledWith(
-      '21m00Tcm4TlvDq8ikWAM',
+      'pNInz6obpgDQGcFmaJgB',
       expect.objectContaining({
         text: 'Hello meeting',
         modelId: 'eleven_turbo_v2_5',

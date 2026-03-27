@@ -13,6 +13,7 @@ export class MeetingSession {
   readonly config: OpenClawConfig;
 
   botId: string | null = null;
+  websocketUrl: string | null = null;
   transcriptBuffer: TranscriptSegment[] = [];
   intents: Intent[] = [];
   createdIssues: CreatedIssue[] = [];

@@ -29,7 +29,9 @@ export async function handleMessage(
   await replyFn('Joining the call now...');
 
   try {
-    session.botId = await joinMeeting(meetUrl, config.instanceName, config.skribbyApiKey);
+    const joinResult = await joinMeeting(meetUrl, config.instanceName, config.skribbyApiKey);
+    session.botId = joinResult.botId;
+    session.websocketUrl = joinResult.websocketUrl;
     await replyFn(`✅ ${config.instanceName} has joined the meeting.`);
   } catch (err) {
     const errorMsg = safeErrorMessage(err);
