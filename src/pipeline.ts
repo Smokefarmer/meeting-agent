@@ -9,7 +9,7 @@ import { streamTranscript } from './listen.js';
 import { extractIntents } from './detect.js';
 import { isDuplicate } from './dedup.js';
 import { routeIntent } from './route.js';
-import { speak } from './speak.js';
+import { speakGreeting } from './speak.js';
 import { generateAndSendSummary } from './summary.js';
 
 const EXTRACTION_INTERVAL_MS = 30_000;
@@ -27,10 +27,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     throw new Error('Cannot run pipeline: session has no botId (join step did not complete)');
   }
 
-  await speak(
-    `${config.instanceName} is here. I'll handle action items as we go.`,
-    config,
-  );
+  await speakGreeting(config, session.botId);
 
   let bufferText = '';
   let lastExtractionTime = Date.now();
