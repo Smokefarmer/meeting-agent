@@ -67,4 +67,15 @@ export async function handleMessage(
   runPipeline(session).catch((err) => {
     console.error('Pipeline error:', safeErrorMessage(err));
   });
+
+  // Keep process alive so webhook server continues receiving events
+  // Process will exit naturally when the meeting ends (webhook server calls unregisterSession)
+  await new Promise<void>((resolve) => {
+    process.once('SIGINT', resolve);
+    process.once('SIGTERM', resolve);
+    // Also resolve when session ends
+    const check = setInterval(() => {
+      if (!session.isActive) { clearInterval(check); resolve(); }
+    }, 5000);
+  });
 }

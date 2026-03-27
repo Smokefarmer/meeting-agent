@@ -21,7 +21,7 @@ const sessions = new Map<string, MeetingSession>();
 
 // Rolling transcript buffer per session
 const buffers = new Map<string, string>();
-const EXTRACTION_INTERVAL_WORDS = 50; // extract after ~50 words
+const EXTRACTION_INTERVAL_WORDS = 10; // extract after ~10 words (low for demo)
 const wordCounts = new Map<string, number>();
 
 const config = loadConfig();
@@ -55,7 +55,10 @@ app.post('/', async (req, res) => {
   if (!botId) return;
 
   const session = sessions.get(botId);
-  if (!session) return;
+  if (!session) {
+    // Unknown bot — ignore (old session or stale event)
+    return;
+  }
 
   // Extract text from words array
   const words: Array<{ text: string }> = event?.data?.data?.words ?? [];
@@ -130,6 +133,7 @@ app.post('/bot-done', async (req, res) => {
   }
 
   await generateAndSendSummary(session, config);
+  session.end(); // marks isActive = false → skill.ts process exits cleanly
   unregisterSession(botId);
   console.log(`[webhook] Session ended for bot ${botId}`);
 });
