@@ -4,14 +4,18 @@
  */
 
 import axios from 'axios';
+import { z } from 'zod';
 
 const SKRIBBY_API_BASE = 'https://api.skribby.io/v1';
 
 /**
- * Skribby API response shape.
- * Note: Skribby may return snake_case (bot_id) — verify against API docs
- * and add a Zod parse layer when implementing Issue #1.
+ * Zod schema for Skribby API response.
+ * Skribby returns snake_case (bot_id) — we transform to camelCase.
  */
+const SkribbyJoinResponseSchema = z.object({
+  bot_id: z.string().min(1),
+});
+
 export interface JoinResult {
   botId: string;
 }
@@ -21,7 +25,7 @@ export async function joinMeeting(
   botName: string,
   apiKey: string,
 ): Promise<string> {
-  const response = await axios.post<JoinResult>(
+  const response = await axios.post(
     `${SKRIBBY_API_BASE}/bots`,
     {
       meeting_url: meetingUrl,
@@ -36,5 +40,6 @@ export async function joinMeeting(
     },
   );
 
-  return response.data.botId;
+  const parsed = SkribbyJoinResponseSchema.parse(response.data);
+  return parsed.bot_id;
 }
