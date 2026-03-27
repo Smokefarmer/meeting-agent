@@ -269,6 +269,7 @@ describe('handleAddressedSpeech', () => {
       'We decided to use TypeScript.',
       config,
       'bot-123',
+      session,
     );
   });
 

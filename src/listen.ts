@@ -7,8 +7,26 @@
 import WebSocket from 'ws';
 import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
+import type { MeetingSession } from './session.js';
 
 export type OnSegmentCallback = (segment: TranscriptSegment) => Promise<void>;
+
+/**
+ * Send an action to the meeting via the active WebSocket connection.
+ * Used to send chat messages back into the meeting.
+ * Never throws — silent degradation if WS not available.
+ */
+export function sendWsAction(session: MeetingSession, action: string, data: Record<string, unknown>): void {
+  try {
+    if (!session.wsConnection || session.wsConnection.readyState !== WebSocket.OPEN) {
+      console.warn('sendWsAction: no active WebSocket connection');
+      return;
+    }
+    session.wsConnection.send(JSON.stringify({ action, data }));
+  } catch (err) {
+    console.error('sendWsAction failed:', err instanceof Error ? err.message : err);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Zod schemas for Skribby WebSocket events
@@ -53,6 +71,7 @@ export async function streamTranscript(
   websocketUrl: string,
   apiKey: string,
   onSegment: OnSegmentCallback,
+  session?: MeetingSession,
 ): Promise<void> {
   let retries = 0;
 
@@ -61,6 +80,9 @@ export async function streamTranscript(
       const ws = new WebSocket(websocketUrl, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
+
+      // Store WS on session so speak.ts can send actions back
+      if (session) session.wsConnection = ws;
 
       ws.on('message', (raw: WebSocket.RawData) => {
         handleMessage(raw, onSegment);

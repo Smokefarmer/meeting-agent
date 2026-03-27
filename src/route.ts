@@ -49,7 +49,7 @@ async function handleGitHubIntent(
   // Check GitHub configuration
   if (!config.githubToken || !config.githubRepo) {
     if (session.botId) {
-      respond("I don't have GitHub connected. I noted it locally.", config, session.botId).catch(console.error);
+      respond("I don't have GitHub connected. I noted it locally.", config, session.botId, session).catch(console.error);
     }
     return;
   }
@@ -57,7 +57,7 @@ async function handleGitHubIntent(
   // Check confidence threshold
   if (intent.confidence < config.confidenceThreshold) {
     if (session.botId) {
-      respond(`I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`, config, session.botId).catch(console.error);
+      respond(`I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`, config, session.botId, session).catch(console.error);
     }
     return;
   }
@@ -66,13 +66,13 @@ async function handleGitHubIntent(
     const issue = await createGitHubIssue(intent, session, config);
     session.addCreatedIssue(issue);
     if (session.botId) {
-      respond(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);
+      respond(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId, session).catch(console.error);
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error('GitHub issue creation failed:', errMsg);
     if (session.botId) {
-      respond('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId).catch(console.error);
+      respond('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId, session).catch(console.error);
     }
   }
 }
