@@ -13,8 +13,8 @@ const SKRIBBY_API_BASE = 'https://platform.skribby.io/api/v1';
  */
 const SkribbyJoinResponseSchema = z.object({
   id: z.string().min(1),
-  websocket_url: z.string().url().optional(),
-  websocket_read_only_url: z.string().url().optional(),
+  websocket_url: z.string().url().nullable().optional(),
+  websocket_read_only_url: z.string().url().nullable().optional(),
 });
 
 export interface JoinResult {
@@ -33,7 +33,7 @@ export async function joinMeeting(
       meeting_url: meetingUrl,
       bot_name: botName,
       service: 'gmeet',
-      transcription_model: 'deepgram/nova-2-realtime',
+      transcription_model: 'openai/whisper-large-v3',
     },
     {
       headers: {
