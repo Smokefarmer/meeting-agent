@@ -12,8 +12,6 @@ import { safeErrorMessage } from './errors.js';
 
 const MEET_URL_REGEX = /https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
 
-let webhookServerStarted = false;
-
 export function extractMeetUrl(message: string): string | null {
   const match = message.match(MEET_URL_REGEX);
   return match ? match[0] : null;
@@ -30,10 +28,7 @@ export async function handleMessage(
   const session = new MeetingSession(meetUrl, config);
 
   // Start webhook server once (receives Recall.ai transcript events)
-  if (!webhookServerStarted) {
-    startWebhookServer(4000);
-    webhookServerStarted = true;
-  }
+  startWebhookServer(4000, config);
 
   const ngrokUrl = process.env.NGROK_URL;
 

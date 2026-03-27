@@ -6,9 +6,7 @@
 import type { MeetingSession } from './session.js';
 import type { TranscriptSegment } from './models.js';
 import { streamTranscript } from './listen.js';
-import { extractIntents } from './detect.js';
-import { isDuplicate } from './dedup.js';
-import { routeIntent } from './route.js';
+import { extractAndRoute } from './extract-and-route.js';
 import { speakGreeting } from './speak.js';
 import { generateAndSendSummary } from './summary.js';
 import { detectWakeWord, handleAddressedSpeech } from './converse.js';
@@ -53,12 +51,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
       lastExtractionTime = Date.now();
 
       try {
-        const intents = await extractIntents(chunk, config);
-        for (const intent of intents) {
-          if (!isDuplicate(intent, session)) {
-            await routeIntent(intent, session, config);
-          }
-        }
+        await extractAndRoute(chunk, session, config);
       } catch (err) {
         console.error('Extraction failed:', safeErrorMessage(err));
       }
