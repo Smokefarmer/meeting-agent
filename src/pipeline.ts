@@ -11,6 +11,7 @@ import { isDuplicate } from './dedup.js';
 import { routeIntent } from './route.js';
 import { speakGreeting } from './speak.js';
 import { generateAndSendSummary } from './summary.js';
+import { detectWakeWord, handleAddressedSpeech } from './converse.js';
 
 const EXTRACTION_INTERVAL_MS = 30_000;
 const MIN_BUFFER_LENGTH = 100;
@@ -34,6 +35,16 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
 
   const onSegment = async (segment: TranscriptSegment): Promise<void> => {
     session.addSegment(segment);
+
+    // Check if the bot is being addressed by name — handle Q&A
+    const question = detectWakeWord(segment, config.instanceName);
+    if (question !== null && question.length > 0) {
+      handleAddressedSpeech(question, session, config).catch((err) => {
+        console.error('Q&A handler failed:', safeErrorMessage(err));
+      });
+      return; // Don't include addressed speech in extraction buffer
+    }
+
     const line = segment.speaker ? `${segment.speaker}: ${segment.text}` : segment.text;
     bufferText += line + '\n';
 
@@ -47,7 +58,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
         for (const intent of intents) {
           if (!isDuplicate(intent, session)) {
             session.addIntent(intent);
-            await routeIntent(intent, session);
+            await routeIntent(intent, session, config);
           }
         }
       } catch (err) {

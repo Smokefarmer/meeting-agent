@@ -48,35 +48,31 @@ async function handleGitHubIntent(
 ): Promise<void> {
   // Check GitHub configuration
   if (!config.githubToken || !config.githubRepo) {
-    speak(
-      "I don't have GitHub connected. I noted it locally.",
-      config,
-    ).catch(console.error);
+    if (session.botId) {
+      speak("I don't have GitHub connected. I noted it locally.", config, session.botId).catch(console.error);
+    }
     return;
   }
 
   // Check confidence threshold
   if (intent.confidence < config.confidenceThreshold) {
-    speak(
-      `I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`,
-      config,
-    ).catch(console.error);
+    if (session.botId) {
+      speak(`I detected a ${intent.type.toLowerCase()} but my confidence is low. Please confirm: "${intent.text}"`, config, session.botId).catch(console.error);
+    }
     return;
   }
 
   try {
     const issue = await createGitHubIssue(intent, session, config);
     session.addCreatedIssue(issue);
-    speak(
-      `Created GitHub issue #${issue.issueNumber}: ${issue.title}`,
-      config,
-    ).catch(console.error);
+    if (session.botId) {
+      speak(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);
+    }
   } catch (err) {
     console.error('GitHub issue creation failed:', err);
-    speak(
-      `GitHub issue creation failed. I'll include this in the meeting summary instead.`,
-      config,
-    ).catch(console.error);
+    if (session.botId) {
+      speak('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId).catch(console.error);
+    }
   }
 }
 
