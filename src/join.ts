@@ -52,10 +52,47 @@ export async function joinMeeting(
   );
 
   const parsed = RecallJoinResponseSchema.parse(response.data);
-  const websocketUrl = `wss://eu-central-1.recall.ai/api/v1/bot/${parsed.id}/transcript`;
+  const botId = parsed.id;
+
+  // Wait for bot to be in_call_recording before returning WebSocket URL
+  // Recall.ai bot needs time to join the meeting (~10-30s)
+  await waitForRecording(botId, apiKey);
+
+  const websocketUrl = `wss://eu-central-1.recall.ai/api/v1/bot/${botId}/transcript`;
 
   return {
-    botId: parsed.id,
+    botId,
     websocketUrl,
   };
+}
+
+/**
+ * Poll bot status until it reaches 'in_call_recording'.
+ * Recall.ai WebSocket only works once the bot is actively recording.
+ */
+async function waitForRecording(botId: string, apiKey: string, maxWaitMs = 60_000): Promise<void> {
+  const interval = 3_000;
+  const maxAttempts = Math.ceil(maxWaitMs / interval);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(interval);
+    try {
+      const res = await axios.get(`${RECALL_API_BASE}/bot/${botId}/`, {
+        headers: { Authorization: `Token ${apiKey}` },
+      });
+      const status = res.data?.status_changes?.at(-1)?.code ?? res.data?.status;
+      console.log(`[Recall.ai] Bot status: ${status}`);
+      if (status === 'in_call_recording') return;
+      if (status === 'done' || status === 'fatal') throw new Error(`Bot stopped before recording: ${status}`);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Bot stopped')) throw err;
+      console.warn('[Recall.ai] Status poll error:', err instanceof Error ? err.message : err);
+    }
+  }
+  // Timeout — try anyway
+  console.warn('[Recall.ai] Timed out waiting for in_call_recording — connecting anyway');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
