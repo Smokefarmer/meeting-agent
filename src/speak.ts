@@ -12,8 +12,8 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import axios from 'axios';
 import type { OpenClawConfig } from './config.js';
 
-/** Default voice — "Adam", available on ElevenLabs free tier. */
-const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB';
+/** Voice ID from ElevenLabs voice library (paid plan). */
+const DEFAULT_VOICE_ID = 'aOcS60CY8CoaVaZfqqb5';
 
 /** Model optimised for lowest latency. */
 const TTS_MODEL_ID = 'eleven_turbo_v2_5';

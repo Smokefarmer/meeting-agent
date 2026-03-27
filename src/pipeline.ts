@@ -24,7 +24,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     throw new Error('Cannot run pipeline: session has no botId (join step did not complete)');
   }
   if (!session.websocketUrl) {
-    console.warn('No websocketUrl — real-time transcription unavailable (standard model). Bot is in the call but will not stream live transcript.');
+    console.warn('No websocketUrl — Skribby did not return a WebSocket URL. Check your plan supports deepgram/nova-2-realtime.');
   }
 
   await speakGreeting(config, session.botId);
