@@ -27,7 +27,7 @@ const MAX_TEXT_LENGTH = 200;
 /** Google Meet chat message character limit. */
 const CHAT_MESSAGE_MAX_LENGTH = 500;
 
-const RECALL_BASE_URL = 'https://us-east-1.recall.ai/api/v1';
+const RECALL_BASE_URL = 'https://eu-central-1.recall.ai/api/v1';
 
 /**
  * Send a text message into the Google Meet chat via Recall.ai REST API.

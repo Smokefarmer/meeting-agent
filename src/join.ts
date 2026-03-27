@@ -6,7 +6,7 @@
 import axios from 'axios';
 import { z } from 'zod';
 
-const RECALL_API_BASE = 'https://us-east-1.recall.ai/api/v1';
+const RECALL_API_BASE = 'https://eu-central-1.recall.ai/api/v1';
 
 /**
  * Zod schema for Recall.ai bot creation response.
@@ -52,7 +52,7 @@ export async function joinMeeting(
   );
 
   const parsed = RecallJoinResponseSchema.parse(response.data);
-  const websocketUrl = `wss://us-east-1.recall.ai/api/v1/bot/${parsed.id}/transcript`;
+  const websocketUrl = `wss://eu-central-1.recall.ai/api/v1/bot/${parsed.id}/transcript`;
 
   return {
     botId: parsed.id,
