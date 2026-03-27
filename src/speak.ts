@@ -10,6 +10,8 @@
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import axios from 'axios';
+import { sendWsAction } from './listen.js';
+import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
 
 /** Voice ID from ElevenLabs voice library (paid plan). */
@@ -27,30 +29,24 @@ const MAX_TEXT_LENGTH = 200;
 const SKRIBBY_BASE_URL = 'https://platform.skribby.io/api/v1';
 
 /**
- * Send a text message into the Google Meet chat via Skribby.
- * Available on all Skribby plans (free included).
+ * Send a text message into the Google Meet chat via Skribby WebSocket action.
+ * Uses the active WebSocket connection — no deprecated REST endpoint.
  *
  * **Never throws** — all errors are caught and logged.
  */
 export async function sendChatMessage(
   text: string,
-  config: OpenClawConfig,
-  botId: string,
+  _config: OpenClawConfig,
+  _botId: string,
+  session?: MeetingSession,
 ): Promise<void> {
   try {
     if (!text.trim()) return;
-
-    await axios.post(
-      `${SKRIBBY_BASE_URL}/bot/${botId}/chat-message`,
-      { message: text },
-      {
-        headers: {
-          Authorization: `Bearer ${config.skribbyApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10_000,
-      },
-    );
+    if (!session) {
+      console.warn('sendChatMessage: no session provided, cannot send via WebSocket');
+      return;
+    }
+    sendWsAction(session, 'chat-message', { content: text });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`sendChatMessage() failed (silent degradation): ${message}`);
@@ -67,11 +63,12 @@ export async function respond(
   text: string,
   config: OpenClawConfig,
   botId: string,
+  session?: MeetingSession,
 ): Promise<void> {
-  // Always send chat message (works on free Skribby)
-  await sendChatMessage(text, config, botId);
+  // Always send chat message via WebSocket action
+  await sendChatMessage(text, config, botId, session);
 
-  // Optionally speak via TTS if ElevenLabs is configured and Skribby paid
+  // Optionally speak via TTS if ElevenLabs is configured
   if (config.elevenLabsApiKey) {
     await speakTTS(text, config.elevenLabsApiKey, config.skribbyApiKey, botId);
   }
@@ -150,10 +147,12 @@ async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Buffer
 export async function speakGreeting(
   config: OpenClawConfig,
   botId: string,
+  session?: MeetingSession,
 ): Promise<void> {
   await respond(
     `👋 ${config.instanceName} is here. I'll handle action items as we go.`,
     config,
     botId,
+    session,
   );
 }

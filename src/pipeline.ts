@@ -27,7 +27,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     console.warn('No websocketUrl — Skribby did not return a WebSocket URL. Check your plan supports deepgram/nova-2-realtime.');
   }
 
-  await speakGreeting(config, session.botId);
+  await speakGreeting(config, session.botId, session);
 
   let bufferText = '';
   let lastExtractionTime = Date.now();
@@ -67,7 +67,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
 
   try {
     if (session.websocketUrl) {
-      await streamTranscript(session.websocketUrl, config.skribbyApiKey, onSegment);
+      await streamTranscript(session.websocketUrl, config.skribbyApiKey, onSegment, session);
     } else {
       // Standard model — no real-time stream. Bot is in the call but transcript arrives post-meeting.
       console.log('Pipeline: waiting for meeting to end (no real-time stream)...');

@@ -14,6 +14,7 @@ export class MeetingSession {
 
   botId: string | null = null;
   websocketUrl: string | null = null;
+  wsConnection: import('ws').WebSocket | null = null; // active WebSocket for sending actions
   transcriptBuffer: TranscriptSegment[] = [];
   intents: Intent[] = [];
   createdIssues: CreatedIssue[] = [];
