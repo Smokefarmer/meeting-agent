@@ -10,9 +10,9 @@ import type { Intent, CreatedIssue, TranscriptSegment } from './models.js';
 function makeConfig(overrides: Partial<OpenClawConfig> = {}): OpenClawConfig {
   return {
     instanceName: 'test-bot',
-    skribbyApiKey: 'sk-skribby-test',
+    recallApiKey: 'sk-recall-test',
     elevenLabsApiKey: 'sk-eleven-test',
-    anthropicApiKey: 'sk-ant-test',
+    geminiApiKey: 'gemini-test-key',
     githubToken: null,
     githubRepo: null,
     telegramBotToken: null,

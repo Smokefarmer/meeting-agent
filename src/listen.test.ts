@@ -44,8 +44,25 @@ function latestWs(): MockWebSocket {
   return ws;
 }
 
-function sendMessage(ws: MockWebSocket, data: unknown): void {
-  ws.emit("message", Buffer.from(JSON.stringify({ type: "transcript", data: { ...data, is_final: true } })));
+/**
+ * Send a Recall.ai transcript event through the WebSocket mock.
+ * Matches the RecallTranscriptDataSchema expected by listen.ts.
+ */
+function sendTranscriptMessage(
+  ws: MockWebSocket,
+  opts: {
+    words: Array<{ text: string; start_time: number; end_time: number }>;
+    speaker?: string | null;
+    is_final?: boolean;
+  },
+): void {
+  const data = {
+    original_transcript_id: 1,
+    speaker: opts.speaker ?? null,
+    words: opts.words,
+    is_final: opts.is_final ?? true,
+  };
+  ws.emit('message', Buffer.from(JSON.stringify({ type: 'transcript', data })));
 }
 
 // ---------------------------------------------------------------------------
@@ -68,13 +85,13 @@ describe('streamTranscript', () => {
 
   it('connects with correct URL and authorization header', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-123/transcript', 'sk-test-key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-123/transcript', 'sk-test-key', onSegment);
 
     const ws = latestWs();
-    expect(ws.url).toBe('wss://platform.skribby.io/api/v1/bot/bot-123/transcript');
+    expect(ws.url).toBe('wss://us-east-1.recall.ai/api/v1/bot/bot-123/transcript');
     expect(ws.options).toEqual(
       expect.objectContaining({
-        headers: { Authorization: 'Bearer sk-test-key' },
+        headers: { Authorization: 'Token sk-test-key' },
       }),
     );
   });
@@ -83,13 +100,18 @@ describe('streamTranscript', () => {
   // Message parsing
   // -----------------------------------------------------------------------
 
-  it('parses incoming message and calls onSegment with TranscriptSegment', async () => {
+  it('parses incoming Recall.ai transcript event and calls onSegment', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
-    const message = { text: 'Hello world', speaker: 'Alice', timestamp: 1000 };
-    sendMessage(ws, message);
+    sendTranscriptMessage(ws, {
+      words: [
+        { text: 'Hello', start_time: 1.0, end_time: 1.5 },
+        { text: 'world', start_time: 1.5, end_time: 2.0 },
+      ],
+      speaker: 'Alice',
+    });
 
     // Let microtasks flush
     await vi.advanceTimersByTimeAsync(0);
@@ -99,21 +121,50 @@ describe('streamTranscript', () => {
     expect(segment).toEqual({
       text: 'Hello world',
       speaker: 'Alice',
-      timestamp: 1000,
+      timestamp: 1.0,
     });
   });
 
   it('defaults speaker to null when missing from message', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
-    sendMessage(ws, { text: 'No speaker', timestamp: 2000 });
+    sendTranscriptMessage(ws, {
+      words: [{ text: 'No', start_time: 2.0, end_time: 2.5 }, { text: 'speaker', start_time: 2.5, end_time: 3.0 }],
+    });
 
     await vi.advanceTimersByTimeAsync(0);
 
     expect(onSegment).toHaveBeenCalledOnce();
     expect(onSegment.mock.calls[0][0].speaker).toBeNull();
+  });
+
+  it('ignores non-final transcript events', async () => {
+    const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+
+    const ws = latestWs();
+    sendTranscriptMessage(ws, {
+      words: [{ text: 'partial', start_time: 0, end_time: 0.5 }],
+      is_final: false,
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onSegment).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-transcript event types', async () => {
+    const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
+
+    const ws = latestWs();
+    ws.emit('message', Buffer.from(JSON.stringify({ type: 'status', data: { status: 'active' } })));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onSegment).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -124,7 +175,7 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
     // Send invalid JSON
@@ -145,11 +196,14 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
-    // Missing required 'text' field
-    sendMessage(ws, { speaker: 'Bob', timestamp: 100 });
+    // Missing required 'words' field — fails RecallTranscriptDataSchema
+    ws.emit('message', Buffer.from(JSON.stringify({
+      type: 'transcript',
+      data: { speaker: 'Bob', is_final: true },
+    })));
 
     await vi.advanceTimersByTimeAsync(0);
 
@@ -165,7 +219,7 @@ describe('streamTranscript', () => {
 
   it('resolves on clean close (code 1000) without reconnecting', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
     ws.emit('close', 1000);
@@ -180,7 +234,7 @@ describe('streamTranscript', () => {
 
   it('reconnects with exponential backoff on unexpected close (up to 3 times)', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     // First connection -- unexpected close
     expect(instances).toHaveLength(1);
@@ -214,7 +268,7 @@ describe('streamTranscript', () => {
 
   it('reconnects then resolves if subsequent connection closes cleanly', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    const promise = streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    const promise = streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     // First connection -- unexpected close
     latestWs().emit('close', 1006);
@@ -237,16 +291,20 @@ describe('streamTranscript', () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockRejectedValue(new Error('callback boom'));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
     const ws = latestWs();
 
-    sendMessage(ws, { text: 'test', speaker: null, timestamp: 500 });
+    sendTranscriptMessage(ws, {
+      words: [{ text: 'test', start_time: 0.5, end_time: 1.0 }],
+    });
 
     await vi.advanceTimersByTimeAsync(0);
 
     expect(onSegment).toHaveBeenCalledOnce();
     // Stream should still be alive -- verify by sending another message
-    sendMessage(ws, { text: 'still alive', speaker: null, timestamp: 600 });
+    sendTranscriptMessage(ws, {
+      words: [{ text: 'still', start_time: 0.6, end_time: 0.8 }, { text: 'alive', start_time: 0.8, end_time: 1.0 }],
+    });
 
     await vi.advanceTimersByTimeAsync(0);
 
@@ -261,7 +319,7 @@ describe('streamTranscript', () => {
 
   it('swallows WebSocket error events without crashing', async () => {
     const onSegment = vi.fn<OnSegmentCallback>();
-    streamTranscript('wss://platform.skribby.io/api/v1/bot/bot-1/transcript', 'key', onSegment);
+    streamTranscript('wss://us-east-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
     const ws = latestWs();
 

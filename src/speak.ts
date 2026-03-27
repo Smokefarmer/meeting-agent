@@ -1,8 +1,8 @@
 /**
- * Bot response delivery — Skribby chat message (primary) + ElevenLabs TTS (optional).
+ * Bot response delivery — Recall.ai chat message (primary) + ElevenLabs TTS (optional).
  *
- * sendChatMessage(): Posts text to Google Meet chat via Skribby — works on all plans.
- * speak(): ElevenLabs TTS + Skribby audio injection — requires paid Skribby.
+ * sendChatMessage(): Posts text to Google Meet chat via Recall.ai REST API.
+ * speakTTS(): ElevenLabs TTS + Recall.ai audio injection.
  *
  * CRITICAL: Every public function in this module MUST silently degrade on
  * failure. The meeting pipeline must never crash because response delivery failed.
@@ -10,8 +10,6 @@
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import axios from 'axios';
-import { sendWsAction } from './listen.js';
-import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
 
 /** Voice ID from ElevenLabs voice library (paid plan). */
@@ -20,33 +18,47 @@ const DEFAULT_VOICE_ID = 'aOcS60CY8CoaVaZfqqb5';
 /** Model optimised for lowest latency. */
 const TTS_MODEL_ID = 'eleven_turbo_v2_5';
 
-/** Output format suitable for Skribby playback. */
+/** Output format suitable for Recall.ai playback. */
 const OUTPUT_FORMAT = 'mp3_44100_128' as const;
 
 /** Max text length for TTS. */
 const MAX_TEXT_LENGTH = 200;
 
-const SKRIBBY_BASE_URL = 'https://platform.skribby.io/api/v1';
+/** Google Meet chat message character limit. */
+const CHAT_MESSAGE_MAX_LENGTH = 500;
+
+const RECALL_BASE_URL = 'https://us-east-1.recall.ai/api/v1';
 
 /**
- * Send a text message into the Google Meet chat via Skribby WebSocket action.
- * Uses the active WebSocket connection — no deprecated REST endpoint.
+ * Send a text message into the Google Meet chat via Recall.ai REST API.
+ *
+ * Google Meet has a 500-character limit — text is truncated with ellipsis
+ * if it exceeds that.
  *
  * **Never throws** — all errors are caught and logged.
  */
 export async function sendChatMessage(
   text: string,
-  _config: OpenClawConfig,
-  _botId: string,
-  session?: MeetingSession,
+  config: OpenClawConfig,
+  botId: string,
 ): Promise<void> {
   try {
     if (!text.trim()) return;
-    if (!session) {
-      console.warn('sendChatMessage: no session provided, cannot send via WebSocket');
-      return;
-    }
-    sendWsAction(session, 'chat-message', { content: text });
+
+    const truncated = text.length > CHAT_MESSAGE_MAX_LENGTH
+      ? `${text.slice(0, CHAT_MESSAGE_MAX_LENGTH - 1)}…`
+      : text;
+
+    await axios.post(
+      `${RECALL_BASE_URL}/bot/${botId}/send_chat_message/`,
+      { message: truncated },
+      {
+        headers: {
+          Authorization: `Token ${config.recallApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`sendChatMessage() failed (silent degradation): ${message}`);
@@ -63,27 +75,24 @@ export async function respond(
   text: string,
   config: OpenClawConfig,
   botId: string,
-  session?: MeetingSession,
 ): Promise<void> {
-  // Always send chat message via WebSocket action
-  await sendChatMessage(text, config, botId, session);
+  await sendChatMessage(text, config, botId);
 
-  // Optionally speak via TTS if ElevenLabs is configured
   if (config.elevenLabsApiKey) {
-    await speakTTS(text, config.elevenLabsApiKey, config.skribbyApiKey, botId);
+    await speakTTS(text, config.elevenLabsApiKey, config.recallApiKey, botId);
   }
 }
 
 /**
- * Generate TTS audio via ElevenLabs and POST it to Skribby so the meeting
- * participants hear the bot speak. Requires paid Skribby plan.
+ * Generate TTS audio via ElevenLabs and POST it to Recall.ai so the meeting
+ * participants hear the bot speak.
  *
  * **Never throws** — all errors are caught and logged.
  */
 async function speakTTS(
   text: string,
   elevenLabsApiKey: string,
-  skribbyApiKey: string,
+  recallApiKey: string,
   botId: string,
 ): Promise<void> {
   try {
@@ -105,21 +114,21 @@ async function speakTTS(
     );
 
     const audioBuffer = await collectStream(audioStream);
+    const b64Data = audioBuffer.toString('base64');
 
     await axios.post(
-      `${SKRIBBY_BASE_URL}/bot/${botId}/speak`,
-      audioBuffer,
+      `${RECALL_BASE_URL}/bot/${botId}/output_audio/`,
+      { kind: 'mp3', b64_data: b64Data },
       {
         headers: {
-          Authorization: `Bearer ${skribbyApiKey}`,
-          'Content-Type': 'audio/mpeg',
+          Authorization: `Token ${recallApiKey}`,
+          'Content-Type': 'application/json',
         },
-        maxBodyLength: 5 * 1024 * 1024,
       },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`speak() failed (silent degradation): ${message}`);
+    console.error(`speakTTS() failed (silent degradation): ${message}`);
   }
 }
 
@@ -147,12 +156,10 @@ async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Buffer
 export async function speakGreeting(
   config: OpenClawConfig,
   botId: string,
-  session?: MeetingSession,
 ): Promise<void> {
   await respond(
-    `👋 ${config.instanceName} is here. I'll handle action items as we go.`,
+    `${config.instanceName} is here. I'll handle action items as we go.`,
     config,
     botId,
-    session,
   );
 }

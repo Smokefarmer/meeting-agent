@@ -38,7 +38,7 @@ import { MeetingSession } from '../session.js';
 
 const mockConfig: OpenClawConfig = {
   instanceName: 'test-bot',
-  skribbyApiKey: 'test-skribby',
+  recallApiKey: 'test-recall',
   elevenLabsApiKey: 'test-eleven',
   geminiApiKey: 'test-gemini',
   githubToken: 'ghp_test123',
@@ -115,7 +115,6 @@ describe('routeIntent', () => {
         "I don't have GitHub connected. I noted it locally.",
         configNoToken,
         'bot-123',
-        expect.anything(),
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -130,7 +129,6 @@ describe('routeIntent', () => {
         "I don't have GitHub connected. I noted it locally.",
         configNoRepo,
         'bot-123',
-        expect.anything(),
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -146,7 +144,6 @@ describe('routeIntent', () => {
         expect.stringContaining('confidence'),
         mockConfig,
         'bot-123',
-        expect.anything(),
       );
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -230,7 +227,6 @@ describe('routeIntent', () => {
         expect.stringContaining('#42'),
         mockConfig,
         'bot-123',
-        expect.anything(),
       );
     });
   });
@@ -299,7 +295,6 @@ describe('routeIntent', () => {
         expect.stringContaining('failed'),
         mockConfig,
         'bot-123',
-        expect.anything(),
       );
       expect(session.createdIssues).toHaveLength(0);
     });

@@ -33,9 +33,9 @@ import { MeetingSession } from '../session.js';
 
 const mockConfig: OpenClawConfig = {
   instanceName: 'test-bot',
-  skribbyApiKey: 'test-skribby',
+  recallApiKey: 'test-recall',
   elevenLabsApiKey: 'test-eleven',
-  anthropicApiKey: 'test-anthropic',
+  geminiApiKey: 'test-gemini',
   githubToken: null,
   githubRepo: null,
   telegramBotToken: 'bot123456:ABC-DEF',
