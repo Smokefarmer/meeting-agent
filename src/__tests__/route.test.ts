@@ -8,9 +8,9 @@ import type { Intent } from '../models.js';
 import type { OpenClawConfig } from '../config.js';
 
 // Hoist mock functions so they're initialized before vi.mock factories run
-const { mockCreate, mockSpeak, mockIsDuplicate } = vi.hoisted(() => ({
+const { mockCreate, mockRespond, mockIsDuplicate } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
-  mockSpeak: vi.fn(),
+  mockRespond: vi.fn(),
   mockIsDuplicate: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ vi.mock('../dedup.js', () => ({
 }));
 
 vi.mock('../speak.js', () => ({
-  speak: mockSpeak,
+  respond: mockRespond,
 }));
 
 // Import after mocks
@@ -40,7 +40,7 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test-bot',
   skribbyApiKey: 'test-skribby',
   elevenLabsApiKey: 'test-eleven',
-  anthropicApiKey: 'test-anthropic',
+  geminiApiKey: 'test-gemini',
   githubToken: 'ghp_test123',
   githubRepo: 'owner/repo',
   telegramBotToken: null,
@@ -68,7 +68,7 @@ describe('routeIntent', () => {
     session = new MeetingSession('https://meet.google.com/abc', mockConfig);
     session.botId = 'bot-123';
     mockIsDuplicate.mockReturnValue(false);
-    mockSpeak.mockResolvedValue(undefined);
+    mockRespond.mockResolvedValue(undefined);
     mockCreate.mockResolvedValue({
       data: {
         html_url: 'https://github.com/owner/repo/issues/42',
@@ -92,7 +92,7 @@ describe('routeIntent', () => {
       expect(mockIsDuplicate).toHaveBeenCalledWith(intent, session);
       expect(session.intents).toHaveLength(0);
       expect(mockCreate).not.toHaveBeenCalled();
-      expect(mockSpeak).not.toHaveBeenCalled();
+      expect(mockRespond).not.toHaveBeenCalled();
     });
 
     it('should add non-duplicate intent to session', async () => {
@@ -111,7 +111,7 @@ describe('routeIntent', () => {
 
       await routeIntent(intent, session, configNoToken);
 
-      expect(mockSpeak).toHaveBeenCalledWith(
+      expect(mockRespond).toHaveBeenCalledWith(
         "I don't have GitHub connected. I noted it locally.",
         configNoToken,
         'bot-123',
@@ -125,7 +125,7 @@ describe('routeIntent', () => {
 
       await routeIntent(intent, session, configNoRepo);
 
-      expect(mockSpeak).toHaveBeenCalledWith(
+      expect(mockRespond).toHaveBeenCalledWith(
         "I don't have GitHub connected. I noted it locally.",
         configNoRepo,
         'bot-123',
@@ -140,7 +140,7 @@ describe('routeIntent', () => {
 
       await routeIntent(intent, session, mockConfig);
 
-      expect(mockSpeak).toHaveBeenCalledWith(
+      expect(mockRespond).toHaveBeenCalledWith(
         expect.stringContaining('confidence'),
         mockConfig,
         'bot-123',
@@ -223,7 +223,7 @@ describe('routeIntent', () => {
 
       await routeIntent(intent, session, mockConfig);
 
-      expect(mockSpeak).toHaveBeenCalledWith(
+      expect(mockRespond).toHaveBeenCalledWith(
         expect.stringContaining('#42'),
         mockConfig,
         'bot-123',
@@ -291,7 +291,7 @@ describe('routeIntent', () => {
 
       await routeIntent(intent, session, mockConfig);
 
-      expect(mockSpeak).toHaveBeenCalledWith(
+      expect(mockRespond).toHaveBeenCalledWith(
         expect.stringContaining('failed'),
         mockConfig,
         'bot-123',
@@ -371,10 +371,10 @@ describe('routeIntent', () => {
     });
   });
 
-  describe('speak is fire-and-forget', () => {
-    it('should not await speak calls (fire-and-forget)', async () => {
-      // speak is mocked to return a Promise that rejects
-      mockSpeak.mockRejectedValue(new Error('TTS failed'));
+  describe('respond is fire-and-forget', () => {
+    it('should not await respond calls (fire-and-forget)', async () => {
+      // respond is mocked to return a Promise that rejects
+      mockRespond.mockRejectedValue(new Error('TTS failed'));
       const intent = createIntent();
 
       // This should not throw even though speak rejects

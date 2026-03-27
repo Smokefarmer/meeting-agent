@@ -10,7 +10,6 @@ import type { OpenClawConfig } from './config.js';
 function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
   process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
-  process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
   process.env.GEMINI_API_KEY = 'gemini-test-key';
 }
 
@@ -44,6 +43,7 @@ describe('loadConfig', () => {
   describe('with all valid env vars', () => {
     it('returns a config object with correct values', () => {
       setRequiredEnvVars();
+      process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
       process.env.GITHUB_TOKEN = 'ghp-test-token';
       process.env.GITHUB_REPO = 'org/repo';
       process.env.TELEGRAM_BOT_TOKEN = 'tg-bot-test';
@@ -81,12 +81,14 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
-    it('throws ZodError when ELEVENLABS_API_KEY is missing', () => {
+    it('defaults elevenLabsApiKey to null when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.SKRIBBY_API_KEY = 'sk-skribby-test';
       process.env.GEMINI_API_KEY = 'gemini-test-key';
 
-      expect(() => loadConfig()).toThrow(ZodError);
+      const config = loadConfig();
+
+      expect(config.elevenLabsApiKey).toBeNull();
     });
 
     it('throws ZodError when GEMINI_API_KEY is missing', () => {
@@ -111,7 +113,6 @@ describe('loadConfig', () => {
         const paths = zodErr.issues.map((issue) => issue.path[0]);
         expect(paths).toContain('instanceName');
         expect(paths).toContain('skribbyApiKey');
-        expect(paths).toContain('elevenLabsApiKey');
         expect(paths).toContain('geminiApiKey');
       }
     });
@@ -131,6 +132,7 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
+      expect(config.elevenLabsApiKey).toBeNull();
       expect(config.githubToken).toBeNull();
       expect(config.githubRepo).toBeNull();
       expect(config.telegramBotToken).toBeNull();
@@ -139,6 +141,7 @@ describe('loadConfig', () => {
 
     it('defaults nullable fields to null when env vars are empty strings', () => {
       setRequiredEnvVars();
+      process.env.ELEVENLABS_API_KEY = '';
       process.env.GITHUB_TOKEN = '';
       process.env.GITHUB_REPO = '';
       process.env.TELEGRAM_BOT_TOKEN = '';
@@ -146,6 +149,7 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
+      expect(config.elevenLabsApiKey).toBeNull();
       expect(config.githubToken).toBeNull();
       expect(config.githubRepo).toBeNull();
       expect(config.telegramBotToken).toBeNull();
@@ -189,7 +193,10 @@ describe('loadConfig', () => {
       expect(config).toBeDefined();
       expect(typeof config.instanceName).toBe('string');
       expect(typeof config.skribbyApiKey).toBe('string');
-      expect(typeof config.elevenLabsApiKey).toBe('string');
+      // elevenLabsApiKey is nullable — string when set, null otherwise
+      expect(
+        config.elevenLabsApiKey === null || typeof config.elevenLabsApiKey === 'string',
+      ).toBe(true);
       expect(typeof config.geminiApiKey).toBe('string');
       expect(typeof config.confidenceThreshold).toBe('number');
     });

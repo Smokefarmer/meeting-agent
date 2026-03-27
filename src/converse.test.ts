@@ -31,11 +31,11 @@ vi.mock('@google/generative-ai', () => {
 // Mock speak module
 // ---------------------------------------------------------------------------
 
-const mockSpeak = vi.fn();
+const mockRespond = vi.fn();
 
 vi.mock('./speak.js', () => {
   return {
-    speak: (...args: unknown[]) => mockSpeak(...args),
+    respond: (...args: unknown[]) => mockRespond(...args),
   };
 });
 
@@ -249,8 +249,8 @@ describe('parseConversationResponse', () => {
 describe('handleAddressedSpeech', () => {
   beforeEach(() => {
     mockGenerateContent.mockReset();
-    mockSpeak.mockReset();
-    mockSpeak.mockResolvedValue(undefined);
+    mockRespond.mockReset();
+    mockRespond.mockResolvedValue(undefined);
   });
 
   it('generates a response and calls speak with the answer', async () => {
@@ -264,8 +264,8 @@ describe('handleAddressedSpeech', () => {
     await handleAddressedSpeech('what was decided?', session, config);
 
     expect(mockGenerateContent).toHaveBeenCalledOnce();
-    expect(mockSpeak).toHaveBeenCalledOnce();
-    expect(mockSpeak).toHaveBeenCalledWith(
+    expect(mockRespond).toHaveBeenCalledOnce();
+    expect(mockRespond).toHaveBeenCalledWith(
       'We decided to use TypeScript.',
       config,
       'bot-123',
@@ -279,7 +279,7 @@ describe('handleAddressedSpeech', () => {
     await handleAddressedSpeech('', session, config);
 
     expect(mockGenerateContent).not.toHaveBeenCalled();
-    expect(mockSpeak).not.toHaveBeenCalled();
+    expect(mockRespond).not.toHaveBeenCalled();
   });
 
   it('returns without calling API when question is whitespace only', async () => {
@@ -289,7 +289,7 @@ describe('handleAddressedSpeech', () => {
     await handleAddressedSpeech('   ', session, config);
 
     expect(mockGenerateContent).not.toHaveBeenCalled();
-    expect(mockSpeak).not.toHaveBeenCalled();
+    expect(mockRespond).not.toHaveBeenCalled();
   });
 
   it('returns without calling API when session has no botId', async () => {
@@ -300,7 +300,7 @@ describe('handleAddressedSpeech', () => {
     await handleAddressedSpeech('what happened?', session, config);
 
     expect(mockGenerateContent).not.toHaveBeenCalled();
-    expect(mockSpeak).not.toHaveBeenCalled();
+    expect(mockRespond).not.toHaveBeenCalled();
   });
 
   it('catches API errors and does not throw', async () => {
@@ -313,7 +313,7 @@ describe('handleAddressedSpeech', () => {
       handleAddressedSpeech('summarize', session, config),
     ).resolves.toBeUndefined();
 
-    expect(mockSpeak).not.toHaveBeenCalled();
+    expect(mockRespond).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(
       'Q&A response failed:',
       'API rate limited',
@@ -349,8 +349,8 @@ describe('handleAddressedSpeech', () => {
 
     await handleAddressedSpeech('give me details', session, config);
 
-    expect(mockSpeak).toHaveBeenCalledOnce();
-    const spokenText = mockSpeak.mock.calls[0][0] as string;
+    expect(mockRespond).toHaveBeenCalledOnce();
+    const spokenText = mockRespond.mock.calls[0][0] as string;
     // 200 - 3 for "..." + 3 for "..." = 200 total
     expect(spokenText.length).toBeLessThanOrEqual(200);
     expect(spokenText.endsWith('...')).toBe(true);
@@ -367,8 +367,8 @@ describe('handleAddressedSpeech', () => {
 
     await handleAddressedSpeech('short question', session, config);
 
-    expect(mockSpeak).toHaveBeenCalledOnce();
-    const spokenText = mockSpeak.mock.calls[0][0] as string;
+    expect(mockRespond).toHaveBeenCalledOnce();
+    const spokenText = mockRespond.mock.calls[0][0] as string;
     expect(spokenText).toBe(exactAnswer);
     expect(spokenText).not.toContain('...');
   });
@@ -380,7 +380,7 @@ describe('handleAddressedSpeech', () => {
       answer: 'Test answer.',
     });
     mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
-    mockSpeak.mockRejectedValueOnce(new Error('TTS failed'));
+    mockRespond.mockRejectedValueOnce(new Error('TTS failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
