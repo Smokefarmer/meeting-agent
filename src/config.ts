@@ -2,12 +2,12 @@ import { z } from 'zod';
 import 'dotenv/config';
 
 const ConfigSchema = z.object({
-  instanceName: z.string().min(1),
+  instanceName: z.string().min(1).max(50).regex(/^[a-zA-Z0-9 _-]+$/),
   skribbyApiKey: z.string().min(1),
   elevenLabsApiKey: z.string().min(1),
   anthropicApiKey: z.string().min(1),
   githubToken: z.string().nullable().default(null),
-  githubRepo: z.string().nullable().default(null),
+  githubRepo: z.string().regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/).nullable().default(null),
   telegramBotToken: z.string().nullable().default(null),
   telegramChatId: z.string().nullable().default(null),
   confidenceThreshold: z.number().min(0.5).max(1).default(0.85),

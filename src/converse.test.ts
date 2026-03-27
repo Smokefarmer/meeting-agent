@@ -151,12 +151,10 @@ describe('detectWakeWord', () => {
 
   it('returns null when instance name appears only as a substring of another word', () => {
     const segment = makeSegment('I said MeetingClawsome is cool');
-    // "meetingclaw" pattern matches inside "meetingclawsome"
-    // but the function does indexOf so it will find a match
-    // This tests actual behavior — indexOf will match
+    // Word-boundary check: "meetingclaw" is followed by "some" (alphanumeric),
+    // so it should NOT trigger the wake word
     const result = detectWakeWord(segment, 'MeetingClaw');
-    // The text after "meetingclaw" is "some is cool"
-    expect(result).toBe('some is cool');
+    expect(result).toBeNull();
   });
 });
 
@@ -165,67 +163,32 @@ describe('detectWakeWord', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseConversationResponse', () => {
-  it('parses valid JSON and returns ConversationResponse', () => {
+  it('parses valid JSON and returns ConversationResponse with answer only', () => {
     const input = JSON.stringify({
       answer: 'We decided to use React.',
-      action: 'none',
-      actionDetail: null,
     });
 
     const result = parseConversationResponse(input);
 
     expect(result).toEqual({
       answer: 'We decided to use React.',
-      action: 'none',
-      actionDetail: null,
     });
-  });
-
-  it('parses JSON with create_issue action', () => {
-    const input = JSON.stringify({
-      answer: "I'll create that issue for you.",
-      action: 'create_issue',
-      actionDetail: 'Fix login page on mobile',
-    });
-
-    const result = parseConversationResponse(input);
-
-    expect(result.action).toBe('create_issue');
-    expect(result.actionDetail).toBe('Fix login page on mobile');
-  });
-
-  it('parses JSON with schedule_followup action', () => {
-    const input = JSON.stringify({
-      answer: "I'll schedule that follow-up.",
-      action: 'schedule_followup',
-      actionDetail: 'Team sync next Tuesday at 10am',
-    });
-
-    const result = parseConversationResponse(input);
-
-    expect(result.action).toBe('schedule_followup');
-    expect(result.actionDetail).toBe('Team sync next Tuesday at 10am');
   });
 
   it('strips ```json code blocks and parses', () => {
     const json = JSON.stringify({
       answer: 'Three decisions were made.',
-      action: 'none',
-      actionDetail: null,
     });
     const wrapped = '```json\n' + json + '\n```';
 
     const result = parseConversationResponse(wrapped);
 
     expect(result.answer).toBe('Three decisions were made.');
-    expect(result.action).toBe('none');
   });
 
   it('strips ``` code blocks without json label and parses', () => {
     const json = JSON.stringify({
       answer: 'Here is the summary.',
-      action: 'none',
-      actionDetail: null,
     });
     const wrapped = '```\n' + json + '\n```';
 
@@ -234,45 +197,22 @@ describe('parseConversationResponse', () => {
     expect(result.answer).toBe('Here is the summary.');
   });
 
-  it('treats non-JSON text as answer with action "none"', () => {
+  it('treats non-JSON text as plain answer', () => {
     const plainText = 'We discussed three main topics today.';
 
     const result = parseConversationResponse(plainText);
 
     expect(result.answer).toBe(plainText);
-    expect(result.action).toBe('none');
-    expect(result.actionDetail).toBeNull();
   });
 
-  it('defaults action to "none" when action field is missing from JSON', () => {
+  it('parses JSON with only an answer field', () => {
     const input = JSON.stringify({
       answer: 'The meeting is going well.',
     });
 
     const result = parseConversationResponse(input);
 
-    expect(result.action).toBe('none');
-    expect(result.actionDetail).toBeNull();
-  });
-
-  it('defaults actionDetail to null when missing from JSON', () => {
-    const input = JSON.stringify({
-      answer: 'Got it.',
-      action: 'none',
-    });
-
-    const result = parseConversationResponse(input);
-
-    expect(result.actionDetail).toBeNull();
-  });
-
-  it('throws ZodError for invalid action value', () => {
-    const input = JSON.stringify({
-      answer: 'Some answer.',
-      action: 'invalid_action',
-    });
-
-    expect(() => parseConversationResponse(input)).toThrow(ZodError);
+    expect(result.answer).toBe('The meeting is going well.');
   });
 
   it('throws ZodError when answer is empty string', () => {
@@ -318,8 +258,6 @@ describe('handleAddressedSpeech', () => {
     const session = makeSession(config);
     const responseJson = JSON.stringify({
       answer: 'We decided to use TypeScript.',
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
@@ -406,8 +344,6 @@ describe('handleAddressedSpeech', () => {
     const longAnswer = 'B'.repeat(250);
     const responseJson = JSON.stringify({
       answer: longAnswer,
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
@@ -426,8 +362,6 @@ describe('handleAddressedSpeech', () => {
     const exactAnswer = 'C'.repeat(200);
     const responseJson = JSON.stringify({
       answer: exactAnswer,
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
@@ -444,8 +378,6 @@ describe('handleAddressedSpeech', () => {
     const session = makeSession(config);
     const responseJson = JSON.stringify({
       answer: 'Test answer.',
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
     mockSpeak.mockRejectedValueOnce(new Error('TTS failed'));
@@ -477,8 +409,6 @@ describe('generateResponse', () => {
     const session = makeSession(config);
     const responseJson = JSON.stringify({
       answer: 'Answer.',
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
@@ -493,8 +423,6 @@ describe('generateResponse', () => {
     const session = makeSession(config);
     const responseJson = JSON.stringify({
       answer: 'Here you go.',
-      action: 'none',
-      actionDetail: null,
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
@@ -521,16 +449,12 @@ describe('generateResponse', () => {
     const session = makeSession(config);
     const responseJson = JSON.stringify({
       answer: 'Two bugs were found.',
-      action: 'create_issue',
-      actionDetail: 'Login page broken',
     });
     mockCreate.mockResolvedValueOnce(makeAnthropicResponse(responseJson));
 
     const result = await generateResponse('any bugs?', session, config);
 
     expect(result.answer).toBe('Two bugs were found.');
-    expect(result.action).toBe('create_issue');
-    expect(result.actionDetail).toBe('Login page broken');
   });
 });
 
@@ -632,7 +556,8 @@ describe('buildMeetingContext', () => {
 
     const context = buildMeetingContext(session);
 
-    expect(context).toContain('Recent transcript:');
+    expect(context).toContain('<context>');
+    expect(context).toContain('</context>');
     expect(context).toContain('Alice: Hello everyone');
     expect(context).toContain('Bob: Hi Alice');
   });
@@ -647,10 +572,12 @@ describe('buildMeetingContext', () => {
     }
 
     const context = buildMeetingContext(session);
-    const transcriptSection = context.split('Recent transcript:\n')[1] ?? '';
+    // Extract content between <context> tags
+    const match = context.match(/<context>\n([\s\S]*?)\n<\/context>/);
+    const transcriptContent = match ? match[1] : '';
 
     // Should start with '...' indicating truncation
-    expect(transcriptSection.startsWith('...')).toBe(true);
+    expect(transcriptContent.startsWith('...')).toBe(true);
   });
 
   it('does not include transcript section when there are no segments', () => {
@@ -659,7 +586,7 @@ describe('buildMeetingContext', () => {
 
     const context = buildMeetingContext(session);
 
-    expect(context).not.toContain('Recent transcript:');
+    expect(context).not.toContain('<context>');
   });
 
   it('does not include decisions section when there are no decisions', () => {
@@ -718,6 +645,6 @@ describe('buildMeetingContext', () => {
     expect(context).toContain('Decisions made:');
     expect(context).toContain('Detected intents:');
     expect(context).toContain('GitHub issues created:');
-    expect(context).toContain('Recent transcript:');
+    expect(context).toContain('<context>');
   });
 });

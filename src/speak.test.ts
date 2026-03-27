@@ -194,32 +194,28 @@ describe('speak', () => {
   // Long text warning
   // -------------------------------------------------------------------------
 
-  it('logs a warning when text exceeds 200 characters', async () => {
+  it('silently truncates text exceeding 200 characters', async () => {
     const longText = 'A'.repeat(250);
     mockConvert.mockResolvedValueOnce(fakeAudioStream(new Uint8Array([0x00])));
 
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
     await speak(longText, mockConfig, BOT_ID);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('250 chars'),
-    );
-
-    consoleSpy.mockRestore();
+    expect(mockConvert).toHaveBeenCalledOnce();
+    const callArgs = mockConvert.mock.calls[0][1];
+    expect(callArgs.text).toHaveLength(200);
+    expect(callArgs.text).toBe('A'.repeat(200));
   });
 
-  it('does not warn when text is within 200 characters', async () => {
+  it('does not truncate text within 200 characters', async () => {
     const shortText = 'A'.repeat(100);
     mockConvert.mockResolvedValueOnce(fakeAudioStream(new Uint8Array([0x00])));
 
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
     await speak(shortText, mockConfig, BOT_ID);
 
-    expect(consoleSpy).not.toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
+    expect(mockConvert).toHaveBeenCalledOnce();
+    const callArgs = mockConvert.mock.calls[0][1];
+    expect(callArgs.text).toBe(shortText);
+    expect(callArgs.text).toHaveLength(100);
   });
 });
 

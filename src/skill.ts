@@ -34,9 +34,8 @@ export async function handleMessage(
     session.websocketUrl = joinResult.websocketUrl;
     await replyFn(`✅ ${config.instanceName} has joined the meeting.`);
   } catch (err) {
-    const errorMsg = safeErrorMessage(err);
-    console.error('Join failed:', errorMsg);
-    await replyFn(`❌ Failed to join meeting: ${errorMsg}`);
+    console.error('Join failed:', safeErrorMessage(err));
+    await replyFn('Failed to join the meeting. Please check the link and try again.');
     return;
   }
 
