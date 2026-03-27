@@ -1,0 +1,48 @@
+{
+  "name": "meeting-claw",
+  "version": "0.1.0",
+  "description": "OpenClaw Skill: AI meeting agent that joins calls, extracts intents, and takes action",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/skill.ts",
+    "start": "node dist/skill.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "keywords": [
+    "openclaw",
+    "skill",
+    "meeting",
+    "ai",
+    "transcription"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@elevenlabs/elevenlabs-js": "^2.40.0",
+    "@octokit/rest": "^21.1.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

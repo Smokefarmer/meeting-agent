@@ -6,9 +6,10 @@ This file provides guidelines for Claude agents working on this codebase.
 
 MeetingAgent is an OpenClaw Skill that transforms meeting audio into automated actions:
 
-- **Core**: Python 3.11+ with Click CLI
-- **Transcription**: Whisper (local via faster-whisper or OpenAI API)
-- **Extraction**: Claude/GPT for intent detection
+- **Core**: TypeScript (Node.js 22) as an OpenClaw Skill
+- **Transcription**: Skribby WebSocket for live transcripts
+- **Extraction**: Claude Haiku for intent detection
+- **TTS**: ElevenLabs for voice responses
 - **Integrations**: GitHub, CalDAV, Telegram, Email
 
 ## Developer Guides
@@ -27,38 +28,42 @@ Always read these before making changes:
 
 ## Tech Stack
 
-- **Language**: Python 3.11+
-- **CLI**: Click + Rich
-- **Transcription**: faster-whisper (local) or OpenAI Whisper API
-- **LLM**: Anthropic Claude (Haiku/Sonnet) or OpenAI GPT-4
-- **Database**: SQLite (MVP), PostgreSQL (future)
-- **HTTP**: requests
+- **Language**: TypeScript (Node.js 22)
+- **Entry Point**: OpenClaw skill entry point
+- **Transcription**: Skribby WebSocket (live call transcripts)
+- **LLM**: Anthropic Claude Haiku via @anthropic-ai/sdk
+- **Validation**: Zod (runtime schema validation)
+- **Database**: None — in-memory MeetingSession only
+- **HTTP**: axios
+- **TTS**: ElevenLabs via @elevenlabs/elevenlabs-js
+- **WebSocket**: ws
 
 ## Project Structure
 
 ```
 meeting-agent/
-├── CLAUDE.md              # This file
+├── CLAUDE.md
 ├── README.md
-├── requirements.txt
-├── setup.py
-├── meeting_agent/
-│   ├── __init__.py
-│   ├── cli.py             # Main CLI entry
-│   ├── transcribe.py      # Whisper integration
-│   ├── extract.py         # LLM intent extraction
-│   ├── actions/
-│   │   ├── __init__.py
-│   │   ├── github.py      # Create issues
-│   │   ├── calendar.py    # Create events
-│   │   ├── telegram.py    # Send messages
-│   │   └── email.py       # Send summaries
-│   ├── models.py          # Pydantic data models
-│   └── prompts.py         # LLM prompts
-├── tests/
-├── data/                  # Meeting data (gitignored)
-├── config.yaml            # User config
-└── docs/                  # Planning docs
+├── package.json
+├── tsconfig.json
+├── vitest.config.ts
+├── .env.example
+├── src/
+│   ├── skill.ts          # OpenClaw entry point
+│   ├── session.ts        # MeetingSession class
+│   ├── models.ts         # TypeScript interfaces
+│   ├── config.ts         # Zod config loader
+│   ├── join.ts           # Skribby API: join call
+│   ├── listen.ts         # Skribby WebSocket transcript
+│   ├── detect.ts         # Claude Haiku extraction
+│   ├── dedup.ts          # Intent deduplication
+│   ├── route.ts          # Intent → action router
+│   ├── speak.ts          # ElevenLabs TTS
+│   ├── summary.ts        # Meeting summary generator
+│   ├── pipeline.ts       # Main pipeline orchestrator
+│   └── prompts.ts        # LLM prompt templates
+├── data/meetings/        # Local summary files
+└── docs/                 # Planning docs
 ```
 
 ## Implementation Pipeline
@@ -68,29 +73,21 @@ All code changes follow TDD:
 1. **Tests first**: Write failing tests before implementation
 2. **Minimal implementation**: Make tests pass with simplest code
 3. **Refactor**: Clean up while keeping tests green
-4. **Verify**: `pytest && mypy && ruff check`
+4. **Verify**: `vitest run && tsc --noEmit && eslint src/`
 
 ## Configuration
 
-```yaml
-# config.yaml
-github:
-  token: ${GITHUB_TOKEN}
-  default_repo: owner/repo
+All configuration is loaded from environment variables, validated by Zod in `src/config.ts`. See `.env.example` for required variables:
 
-llm:
-  provider: anthropic
-  model: claude-3-haiku-20240307
-  api_key: ${ANTHROPIC_API_KEY}
-
-whisper:
-  model: large-v3
-  device: auto
-  language: auto
-
-telegram:
-  bot_token: ${TELEGRAM_BOT_TOKEN}
-  chat_id: ${TELEGRAM_CHAT_ID}
+```bash
+# .env.example
+ANTHROPIC_API_KEY=sk-ant-...
+SKRIBBY_API_KEY=...
+ELEVENLABS_API_KEY=...
+GITHUB_TOKEN=ghp_...
+GITHUB_DEFAULT_REPO=owner/repo
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
 ```
 
 ---
@@ -101,7 +98,7 @@ telegram:
 
 | Layer | Target max lines | Action when exceeded |
 |-------|------------------|----------------------|
-| Python modules | 400 | Split into focused modules |
+| TypeScript modules | 400 | Split into focused modules |
 | Functions | 40 | Extract sub-functions |
 | Classes | 300 | Split responsibilities |
 | Test files | 500 | Split by feature |
@@ -118,27 +115,27 @@ telegram:
 1. **Extract on second occurrence** - If a pattern appears twice, extract to a shared utility
 2. **Shared helpers over copy-paste** - Especially for: API calls, error parsing, config loading, prompt formatting
 3. **Parameterize, don't duplicate** - When multiple functions differ only in a config value, use a single generic function with parameters
-4. **Extract constants** - Magic numbers/strings → named constants in `config.py`
+4. **Extract constants** - Magic numbers/strings → named constants in `config.ts`
 
 ### Code Organization
 
 1. **Colocation** - Keep related code close together; helpers belong near their callers
 2. **Flat over nested** - Prefer shallow directory structures; avoid deeply nested folders
-3. **`__init__.py` for modules** - Use barrel exports to define a module's public API
+3. **Barrel exports** - Use `index.ts` barrel exports to define a module's public API
 4. **Constants in config** - Magic numbers and strings belong in config files, not inline
 
-### Type Hints
+### Type Safety
 
-1. **All public functions** must have type hints
-2. **Use Pydantic** for data models with validation
-3. **Run mypy** before committing
+1. **All public functions** must have explicit TypeScript types
+2. **Use Zod** for runtime data validation (config, LLM output, API responses)
+3. **Run `tsc --noEmit`** before committing
 
 ### Error Handling
 
-1. **Specific exceptions** - Catch specific errors, not bare `except:`
+1. **Specific errors** - Catch specific error types, not bare `catch(e)`
 2. **Graceful degradation** - One failed action shouldn't crash the pipeline
-3. **Logging** - Use `logging` module, not print statements
-4. **User feedback** - CLI should show clear error messages via Rich
+3. **Logging** - Use structured logging, not `console.log`
+4. **User feedback** - Show clear error messages to the caller
 
 ---
 
@@ -147,22 +144,23 @@ telegram:
 ### Test Structure
 
 ```
-tests/
-├── conftest.py           # Shared fixtures
-├── test_transcribe.py    # Transcription tests
-├── test_extract.py       # Extraction tests
-├── test_actions/
-│   ├── test_github.py
-│   ├── test_calendar.py
-│   └── test_telegram.py
-└── fixtures/
+src/
+├── __tests__/
+│   ├── setup.ts              # Shared test setup
+│   ├── session.test.ts       # Session tests
+│   ├── detect.test.ts        # Extraction tests
+│   ├── dedup.test.ts         # Deduplication tests
+│   ├── config.test.ts        # Config tests
+│   ├── listen.test.ts        # WebSocket tests
+│   └── pipeline.test.ts      # Pipeline tests
+└── __fixtures__/
     └── sample_transcript.json
 ```
 
 ### Test Requirements
 
 1. **Unit tests** for all business logic
-2. **Mock external APIs** (GitHub, Whisper API, LLM)
+2. **Mock external APIs** (GitHub, Skribby, LLM, ElevenLabs)
 3. **Integration tests** for full pipeline (with mocks)
 4. **Fixtures** for sample transcripts and intents
 
@@ -170,13 +168,16 @@ tests/
 
 ```bash
 # All tests
-pytest
+npx vitest run
 
 # With coverage
-pytest --cov=meeting_agent
+npx vitest run --coverage
 
 # Specific module
-pytest tests/test_extract.py -v
+npx vitest run src/__tests__/detect.test.ts
+
+# Watch mode
+npx vitest
 ```
 
 ---
@@ -185,38 +186,38 @@ pytest tests/test_extract.py -v
 
 ## Key Principles
 
-### CLI Layer (Click)
+### Skill Entry Point (OpenClaw)
 
-1. **Thin commands** - CLI commands delegate to services, don't contain business logic
-2. **Rich for output** - Use Rich console for progress bars, tables, formatted output
-3. **Config injection** - Commands load config once, pass to services
-4. **Graceful errors** - Catch exceptions, show user-friendly messages via Rich
+1. **Thin entry point** - `skill.ts` delegates to the pipeline, doesn't contain business logic
+2. **Config injection** - Entry point loads config once via Zod, passes to services
+3. **Graceful errors** - Catch exceptions, return user-friendly messages to the caller
+4. **Session lifecycle** - Create MeetingSession on start, persist summary on end
 
-### Transcription Layer
+### Transcription Layer (Skribby)
 
-1. **Engine abstraction** - Support multiple engines (faster-whisper, OpenAI API) behind common interface
-2. **Streaming when possible** - For long audio, process in chunks
-3. **Speaker diarization optional** - Gracefully degrade if pyannote unavailable
+1. **WebSocket streaming** - Connect to Skribby WebSocket for real-time transcript chunks
+2. **Reconnection logic** - Handle disconnects with exponential backoff
+3. **Speaker attribution** - Use Skribby speaker labels when available
 
 ### Extraction Layer (LLM)
 
-1. **Structured output** - Always request JSON, validate with Pydantic
+1. **Structured output** - Always request JSON, validate with Zod
 2. **Confidence scores** - Every extracted intent needs a confidence score
 3. **Retry with backoff** - Handle rate limits gracefully
-4. **Prompt versioning** - Keep prompts in `prompts.py`, version major changes
+4. **Prompt versioning** - Keep prompts in `prompts.ts`, version major changes
 
 ### Action Layer
 
-1. **One action per module** - `github.py`, `calendar.py`, `telegram.py` each handle one integration
+1. **Router pattern** - `route.ts` dispatches intents to action handlers
 2. **Idempotent when possible** - Check if issue already exists before creating
 3. **Fail gracefully** - One failed action shouldn't stop others
 4. **Action logging** - Record all actions taken for audit trail
 
 ### Data Layer
 
-1. **Pydantic models** - All data structures defined with Pydantic for validation
-2. **SQLite for MVP** - Simple, single-file, easy backup
-3. **JSON for transcripts** - Store full transcripts as JSON files alongside DB records
+1. **TypeScript interfaces + Zod** - All data structures defined in `models.ts` with Zod schemas for runtime validation
+2. **In-memory MeetingSession** - No database; session state lives in `session.ts`
+3. **JSON for summaries** - Persist meeting summaries as JSON files in `data/meetings/`
 
 ---
 
@@ -226,7 +227,7 @@ pytest tests/test_extract.py -v
 
 ### API Security
 1. **Never store secrets in code** — No hardcoded API keys, tokens, or passwords. Use environment variables or config files (gitignored)
-2. **Validate all inputs** — Use Pydantic models with validators. Add `max_length`, `min_length`, `ge`, `le` constraints
+2. **Validate all inputs** — Use Zod schemas with refinements. Add `.min()`, `.max()`, `.regex()` constraints
 3. **Generic error messages** — Never expose internal errors to users. Log full error, show "Operation failed" to user
 4. **Rate limit API calls** — Respect provider limits (GitHub, Anthropic, OpenAI). Implement exponential backoff
 
@@ -238,7 +239,7 @@ pytest tests/test_extract.py -v
 
 ### LLM Security
 1. **Prompt injection awareness** — Meeting transcripts are untrusted input. Don't let transcript content escape into system prompts
-2. **Output validation** — Always validate LLM JSON output with Pydantic before acting on it
+2. **Output validation** — Always validate LLM JSON output with Zod before acting on it
 3. **Confidence thresholds** — Never auto-execute actions with confidence < 0.85
 
 ---
@@ -258,14 +259,14 @@ pytest tests/test_extract.py -v
 ### Quick Rules
 - **Tests first** — Write failing test, then implement
 - **One file at a time** — Don't scatter changes across many files
-- **Verify before commit** — `pytest && mypy && ruff check`
+- **Verify before commit** — `vitest run && tsc --noEmit && eslint src/`
 - **Small PRs** — Keep changes focused and reviewable
 
 ---
 
 ## LLM Prompt Guidelines
 
-When modifying prompts in `prompts.py`:
+When modifying prompts in `prompts.ts`:
 
 1. **Be explicit** - Clear instructions beat clever prompting
 2. **Include examples** - Few-shot examples improve accuracy
@@ -288,22 +289,17 @@ When modifying prompts in `prompts.py`:
 
 ```bash
 # Setup
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+npm install
 
 # Development
-meeting-agent process audio.wav --repo owner/repo --dry-run
-meeting-agent transcribe audio.wav -o transcript.json
-meeting-agent extract transcript.json -o intents.json
+npm run dev           # Run with ts-node in watch mode
+npm run build         # Compile TypeScript to dist/
 
 # Quality
-pytest
-mypy meeting_agent
-ruff check meeting_agent
-ruff format meeting_agent
+npx vitest run        # Run tests
+npx tsc --noEmit      # Type check
+npx eslint src/       # Lint
 
 # Pre-commit
-pytest && mypy meeting_agent && ruff check meeting_agent
+npx vitest run && npx tsc --noEmit && npx eslint src/
 ```
