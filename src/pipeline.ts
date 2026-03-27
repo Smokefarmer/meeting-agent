@@ -56,7 +56,6 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
         const intents = await extractIntents(chunk, config);
         for (const intent of intents) {
           if (!isDuplicate(intent, session)) {
-            session.addIntent(intent);
             await routeIntent(intent, session, config);
           }
         }

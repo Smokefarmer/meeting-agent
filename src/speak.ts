@@ -57,19 +57,16 @@ export async function speak(
       return;
     }
 
-    if (text.length > MAX_TEXT_LENGTH) {
-      console.warn(
-        `speak(): text is ${text.length} chars (>${MAX_TEXT_LENGTH}). ` +
-          'Consider shortening for faster TTS.',
-      );
-    }
+    const safeText = text.length > MAX_TEXT_LENGTH
+      ? text.slice(0, MAX_TEXT_LENGTH)
+      : text;
 
     const client = new ElevenLabsClient({ apiKey: config.elevenLabsApiKey });
 
     const audioStream: ReadableStream<Uint8Array> = await client.textToSpeech.convert(
       DEFAULT_VOICE_ID,
       {
-        text,
+        text: safeText,
         modelId: TTS_MODEL_ID,
         outputFormat: OUTPUT_FORMAT,
       },
@@ -85,7 +82,7 @@ export async function speak(
           Authorization: `Bearer ${config.skribbyApiKey}`,
           'Content-Type': 'audio/mpeg',
         },
-        maxBodyLength: Infinity,
+        maxBodyLength: 5 * 1024 * 1024,
       },
     );
   } catch (err: unknown) {

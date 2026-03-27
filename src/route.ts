@@ -69,7 +69,8 @@ async function handleGitHubIntent(
       speak(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);
     }
   } catch (err) {
-    console.error('GitHub issue creation failed:', err);
+    const errMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('GitHub issue creation failed:', errMsg);
     if (session.botId) {
       speak('GitHub issue creation failed. I\'ll include this in the meeting summary instead.', config, session.botId).catch(console.error);
     }
