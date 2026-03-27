@@ -220,6 +220,49 @@ pytest tests/test_extract.py -v
 
 ---
 
+---
+
+## Security Rules
+
+### API Security
+1. **Never store secrets in code** — No hardcoded API keys, tokens, or passwords. Use environment variables or config files (gitignored)
+2. **Validate all inputs** — Use Pydantic models with validators. Add `max_length`, `min_length`, `ge`, `le` constraints
+3. **Generic error messages** — Never expose internal errors to users. Log full error, show "Operation failed" to user
+4. **Rate limit API calls** — Respect provider limits (GitHub, Anthropic, OpenAI). Implement exponential backoff
+
+### Data Security
+1. **Audio files are sensitive** — Meeting recordings may contain confidential information. Never upload to third parties without consent
+2. **Redact PII** — Detect and redact SSNs, credit cards, passwords before storing or sending summaries
+3. **Secure storage** — Transcripts and intents may contain sensitive data. Encrypt at rest if deployed
+4. **Audit trail** — Log all actions taken (issues created, emails sent) for accountability
+
+### LLM Security
+1. **Prompt injection awareness** — Meeting transcripts are untrusted input. Don't let transcript content escape into system prompts
+2. **Output validation** — Always validate LLM JSON output with Pydantic before acting on it
+3. **Confidence thresholds** — Never auto-execute actions with confidence < 0.85
+
+---
+
+## Claude Code Tools & Workflows
+
+### Recommended Skills
+
+| Skill | When to use |
+|-------|-------------|
+| /plan | Before starting any non-trivial implementation — creates step-by-step plan |
+| /tdd | When implementing new features — enforces test-first development |
+| /fix-build | When type errors or build errors occur — surgical fixes |
+| /simplify | After writing code — reviews for reuse, quality, efficiency |
+| /security-scan | After changes touching API calls, input handling, or secrets |
+
+### Quick Rules
+- **Tests first** — Write failing test, then implement
+- **One file at a time** — Don't scatter changes across many files
+- **Verify before commit** — `pytest && mypy && ruff check`
+- **Small PRs** — Keep changes focused and reviewable
+
+---
+
 ## LLM Prompt Guidelines
 
 When modifying prompts in `prompts.py`:
