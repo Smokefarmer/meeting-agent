@@ -13,7 +13,8 @@
       "githubRepo": { "type": "string", "description": "GitHub repo for issues (owner/repo)" },
       "telegramBotToken": { "type": "string", "description": "Telegram bot token for summaries", "secret": true },
       "telegramChatId": { "type": "string", "description": "Telegram chat ID for summaries" },
-      "confidenceThreshold": { "type": "number", "default": 0.85, "description": "Min confidence to auto-create issues" }
+      "confidenceThreshold": { "type": "number", "default": 0.85, "description": "Min confidence to auto-create issues" },
+      "ngrokUrl": { "type": "string", "description": "Ngrok public URL for Recall.ai webhook callbacks" }
     },
     "required": ["instanceName", "recallApiKey"]
   }

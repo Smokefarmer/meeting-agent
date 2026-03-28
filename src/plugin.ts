@@ -118,7 +118,7 @@ export async function joinMeetingFlow(
   const session = new MeetingSession(meetUrl, config);
   const llmClient = createSubagentLlmClient(api, session.meetingId);
 
-  const ngrokUrl = process.env.NGROK_URL;
+  const ngrokUrl = config.ngrokUrl ?? undefined;
 
   await replyFn('Joining the call now...');
 

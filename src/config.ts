@@ -10,6 +10,7 @@ const ConfigSchema = z.object({
   telegramBotToken: z.string().nullable().default(null),
   telegramChatId: z.string().nullable().default(null),
   confidenceThreshold: z.number().min(0.5).max(1).default(0.85),
+  ngrokUrl: z.string().url().nullable().default(null),
 });
 
 export type OpenClawConfig = z.infer<typeof ConfigSchema>;
@@ -24,5 +25,6 @@ export function loadConfig(pluginConfig?: Record<string, unknown>): OpenClawConf
     telegramBotToken: (pluginConfig?.telegramBotToken as string | undefined) ?? (process.env.TELEGRAM_BOT_TOKEN || null),
     telegramChatId: (pluginConfig?.telegramChatId as string | undefined) ?? (process.env.TELEGRAM_CHAT_ID || null),
     confidenceThreshold: Number((pluginConfig?.confidenceThreshold as number | undefined) ?? process.env.CONFIDENCE_THRESHOLD ?? '0.85'),
+    ngrokUrl: (pluginConfig?.ngrokUrl as string | undefined) ?? (process.env.NGROK_URL || null),
   });
 }
