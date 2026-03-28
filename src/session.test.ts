@@ -12,7 +12,7 @@ function makeConfig(overrides: Partial<OpenClawConfig> = {}): OpenClawConfig {
     instanceName: 'test-bot',
     recallApiKey: 'sk-recall-test',
     elevenLabsApiKey: 'sk-eleven-test',
-    geminiApiKey: 'gemini-test-key',
+
     githubToken: null,
     githubRepo: null,
     telegramBotToken: null,

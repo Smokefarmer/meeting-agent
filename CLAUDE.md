@@ -31,7 +31,7 @@ Always read these before making changes:
 - **Language**: TypeScript (Node.js 22)
 - **Entry Point**: OpenClaw skill entry point
 - **Transcription**: Recall.ai WebSocket (live call transcripts)
-- **LLM**: Anthropic Claude Haiku via @anthropic-ai/sdk
+- **LLM**: Claude CLI subprocess (`claude --print`) — no API key needed
 - **Validation**: Zod (runtime schema validation)
 - **Database**: None — in-memory MeetingSession only
 - **HTTP**: axios
@@ -55,7 +55,8 @@ meeting-agent/
 │   ├── config.ts         # Zod config loader
 │   ├── join.ts           # Recall.ai API: join call
 │   ├── listen.ts         # Recall.ai WebSocket transcript
-│   ├── detect.ts         # Claude Haiku extraction
+│   ├── detect.ts         # Intent extraction via Claude CLI
+│   ├── claude-llm.ts     # Claude CLI subprocess LLM client
 │   ├── dedup.ts          # Intent deduplication
 │   ├── route.ts          # Intent → action router
 │   ├── speak.ts          # ElevenLabs TTS
@@ -83,7 +84,6 @@ All configuration is loaded from environment variables, validated by Zod in `src
 
 ```bash
 # .env.example
-ANTHROPIC_API_KEY=sk-ant-...
 RECALL_API_KEY=...
 ELEVENLABS_API_KEY=...
 GITHUB_TOKEN=ghp_...
@@ -231,7 +231,7 @@ npx vitest
 1. **Never store secrets in code** — No hardcoded API keys, tokens, or passwords. Use environment variables or config files (gitignored)
 2. **Validate all inputs** — Use Zod schemas with refinements. Add `.min()`, `.max()`, `.regex()` constraints
 3. **Generic error messages** — Never expose internal errors to users. Log full error, show "Operation failed" to user
-4. **Rate limit API calls** — Respect provider limits (GitHub, Anthropic, OpenAI). Implement exponential backoff
+4. **Rate limit API calls** — Respect provider limits (GitHub, Claude CLI). Implement exponential backoff
 
 ### Data Security
 1. **Audio files are sensitive** — Meeting recordings may contain confidential information. Never upload to third parties without consent
