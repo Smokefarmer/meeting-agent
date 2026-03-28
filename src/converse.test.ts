@@ -12,15 +12,13 @@ import type { OpenClawConfig } from './config.js';
 import type { TranscriptSegment, Intent, CreatedIssue } from './models.js';
 
 // ---------------------------------------------------------------------------
-// Mock Claude CLI via openclaw-llm
+// Mock Claude CLI
 // ---------------------------------------------------------------------------
 
-const { mockInferWithClaude } = vi.hoisted(() => ({
-  mockInferWithClaude: vi.fn(),
-}));
+const mockInferWithClaude = vi.fn();
 
-vi.mock('./openclaw-llm.js', () => ({
-  inferWithClaude: mockInferWithClaude,
+vi.mock('./claude-llm.js', () => ({
+  inferWithClaude: (...args: unknown[]) => mockInferWithClaude(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -44,7 +42,6 @@ function makeConfig(): OpenClawConfig {
     instanceName: 'MeetingClaw',
     recallApiKey: 'sk-test',
     elevenLabsApiKey: 'sk-test',
-    
     githubToken: null,
     githubRepo: null,
     telegramBotToken: null,
@@ -64,9 +61,7 @@ function makeSession(config?: OpenClawConfig): MeetingSession {
   return session;
 }
 
-function makeClaudeResponse(text: string): string {
-  return text;
-}
+// mockInferWithClaude returns string directly — no helper needed
 
 // ---------------------------------------------------------------------------
 // detectWakeWord
@@ -255,7 +250,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: 'We decided to use TypeScript.',
     });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('what was decided?', session, config);
 
@@ -302,7 +297,7 @@ describe('handleAddressedSpeech', () => {
   it('catches API errors and does not throw', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockInferWithClaude.mockImplementationOnce(() => { throw new Error('API rate limited'); });
+    mockInferWithClaude.mockRejectedValueOnce(new Error('API rate limited'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
@@ -320,7 +315,7 @@ describe('handleAddressedSpeech', () => {
   it('catches non-Error exceptions and does not throw', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockInferWithClaude.mockImplementationOnce(() => { throw 'string error'; });
+    mockInferWithClaude.mockRejectedValueOnce('string error');
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
@@ -341,7 +336,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: longAnswer,
     });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('give me details', session, config);
 
@@ -359,7 +354,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: exactAnswer,
     });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     await handleAddressedSpeech('short question', session, config);
 
@@ -375,7 +370,7 @@ describe('handleAddressedSpeech', () => {
     const responseJson = JSON.stringify({
       answer: 'Test answer.',
     });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
     mockRespond.mockRejectedValueOnce(new Error('TTS failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -400,11 +395,11 @@ describe('generateResponse', () => {
     mockInferWithClaude.mockReset();
   });
 
-  it('sends question to Gemini generateContent', async () => {
+  it('sends prompt with system instructions, context, and question', async () => {
     const config = makeConfig();
     const session = makeSession(config);
     const responseJson = JSON.stringify({ answer: 'Answer.' });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     await generateResponse('test question', session, config);
 
@@ -417,7 +412,7 @@ describe('generateResponse', () => {
     const config = makeConfig();
     const session = makeSession(config);
     const responseJson = JSON.stringify({ answer: 'Here you go.' });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     await generateResponse('what decisions were made?', session, config);
 
@@ -425,10 +420,10 @@ describe('generateResponse', () => {
     expect(callArg).toContain('Question: what decisions were made?');
   });
 
-  it('throws when Gemini API call fails', async () => {
+  it('throws when Claude CLI call fails', async () => {
     const config = makeConfig();
     const session = makeSession(config);
-    mockInferWithClaude.mockImplementationOnce(() => { throw new Error('API rate limited'); });
+    mockInferWithClaude.mockRejectedValueOnce(new Error('API rate limited'));
 
     await expect(
       generateResponse('test', session, config),
@@ -441,7 +436,7 @@ describe('generateResponse', () => {
     const responseJson = JSON.stringify({
       answer: 'Two bugs were found.',
     });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     const result = await generateResponse('any bugs?', session, config);
 

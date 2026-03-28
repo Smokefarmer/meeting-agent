@@ -25,7 +25,7 @@ const TEST_CONFIG: OpenClawConfig = {
   instanceName: 'TestBot',
   recallApiKey: 'test-key',
   elevenLabsApiKey: null,
-  geminiApiKey: 'test-gemini',
+
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,

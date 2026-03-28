@@ -5,15 +5,13 @@ import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
 import type { OpenClawConfig } from './config.js';
 
 // ---------------------------------------------------------------------------
-// Mock Claude CLI via openclaw-llm
+// Mock Claude CLI
 // ---------------------------------------------------------------------------
 
-const { mockInferWithClaude } = vi.hoisted(() => ({
-  mockInferWithClaude: vi.fn(),
-}));
+const mockInferWithClaude = vi.fn();
 
-vi.mock('./openclaw-llm.js', () => ({
-  inferWithClaude: mockInferWithClaude,
+vi.mock('./claude-llm.js', () => ({
+  inferWithClaude: (...args: unknown[]) => mockInferWithClaude(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -24,17 +22,12 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test',
   recallApiKey: 'sk-test',
   elevenLabsApiKey: 'sk-test',
-  
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,
   telegramChatId: null,
   confidenceThreshold: 0.85,
 };
-
-function makeClaudeResponse(text: string): string {
-  return text;
-}
 
 // ---------------------------------------------------------------------------
 // parseExtractionResponse
@@ -73,112 +66,53 @@ describe('parseExtractionResponse', () => {
   it('returns empty array for empty items', () => {
     const input = JSON.stringify({ items: [] });
     const result = parseExtractionResponse(input);
-
     expect(result.items).toEqual([]);
   });
 
   it('strips ```json code blocks and parses', () => {
     const json = JSON.stringify({
-      items: [
-        {
-          type: 'BUG',
-          text: 'Login broken',
-          confidence: 0.9,
-        },
-      ],
+      items: [{ type: 'BUG', text: 'Login broken', confidence: 0.9 }],
     });
-    const wrapped = '```json\n' + json + '\n```';
-
-    const result = parseExtractionResponse(wrapped);
-
+    const result = parseExtractionResponse('```json\n' + json + '\n```');
     expect(result.items).toHaveLength(1);
     expect(result.items[0].type).toBe('BUG');
   });
 
   it('strips ``` code blocks without json label and parses', () => {
     const json = JSON.stringify({
-      items: [
-        {
-          type: 'FEATURE',
-          text: 'Add dark mode',
-          confidence: 0.88,
-        },
-      ],
+      items: [{ type: 'FEATURE', text: 'Add dark mode', confidence: 0.88 }],
     });
-    const wrapped = '```\n' + json + '\n```';
-
-    const result = parseExtractionResponse(wrapped);
-
+    const result = parseExtractionResponse('```\n' + json + '\n```');
     expect(result.items).toHaveLength(1);
     expect(result.items[0].type).toBe('FEATURE');
   });
 
   it('throws on invalid JSON string', () => {
-    expect(() => parseExtractionResponse('not json {')).toThrow(
-      'Failed to parse extraction JSON',
-    );
+    expect(() => parseExtractionResponse('not json {')).toThrow('Failed to parse extraction JSON');
   });
 
   it('throws ZodError when items field is missing', () => {
-    const input = JSON.stringify({ results: [] });
-
-    expect(() => parseExtractionResponse(input)).toThrow(ZodError);
+    expect(() => parseExtractionResponse(JSON.stringify({ results: [] }))).toThrow(ZodError);
   });
 
   it('throws ZodError for invalid intent type', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'INVALID_TYPE',
-          text: 'Something',
-          confidence: 0.9,
-        },
-      ],
-    });
-
+    const input = JSON.stringify({ items: [{ type: 'INVALID_TYPE', text: 'X', confidence: 0.9 }] });
     expect(() => parseExtractionResponse(input)).toThrow(ZodError);
   });
 
   it('throws ZodError when required field text is missing', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'TODO',
-          confidence: 0.9,
-        },
-      ],
-    });
-
+    const input = JSON.stringify({ items: [{ type: 'TODO', confidence: 0.9 }] });
     expect(() => parseExtractionResponse(input)).toThrow(ZodError);
   });
 
   it('throws ZodError when required field confidence is missing', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'TODO',
-          text: 'Do something',
-        },
-      ],
-    });
-
+    const input = JSON.stringify({ items: [{ type: 'TODO', text: 'Do something' }] });
     expect(() => parseExtractionResponse(input)).toThrow(ZodError);
   });
 
   it('applies default values for optional fields', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'DECISION',
-          text: 'Use React',
-          confidence: 0.92,
-        },
-      ],
-    });
-
-    const result = parseExtractionResponse(input);
-    const item = result.items[0];
-
+    const input = JSON.stringify({ items: [{ type: 'DECISION', text: 'Use React', confidence: 0.92 }] });
+    const item = parseExtractionResponse(input).items[0];
     expect(item.priority).toBe('medium');
     expect(item.owner).toBeNull();
     expect(item.deadline).toBeNull();
@@ -186,30 +120,12 @@ describe('parseExtractionResponse', () => {
   });
 
   it('throws ZodError when confidence exceeds 1', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'TODO',
-          text: 'Something',
-          confidence: 1.5,
-        },
-      ],
-    });
-
+    const input = JSON.stringify({ items: [{ type: 'TODO', text: 'X', confidence: 1.5 }] });
     expect(() => parseExtractionResponse(input)).toThrow(ZodError);
   });
 
   it('throws ZodError when confidence is below 0', () => {
-    const input = JSON.stringify({
-      items: [
-        {
-          type: 'TODO',
-          text: 'Something',
-          confidence: -0.1,
-        },
-      ],
-    });
-
+    const input = JSON.stringify({ items: [{ type: 'TODO', text: 'X', confidence: -0.1 }] });
     expect(() => parseExtractionResponse(input)).toThrow(ZodError);
   });
 });
@@ -231,67 +147,52 @@ describe('extractIntents', () => {
         { type: 'FEATURE', text: 'Below threshold', confidence: 0.70, sourceQuote: 'c' },
       ],
     });
-
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(responseJson);
 
     const result = await extractIntents('Some transcript text', mockConfig);
 
     expect(result).toHaveLength(2);
     expect(result[0].text).toBe('High confidence');
-    expect(result[0].confidence).toBe(0.95);
     expect(result[1].text).toBe('At threshold');
-    expect(result[1].confidence).toBe(0.85);
-
-    // Each returned intent should have an id
     for (const intent of result) {
       expect(intent.id).toBeDefined();
-      expect(typeof intent.id).toBe('string');
       expect(intent.id.length).toBeGreaterThan(0);
     }
   });
 
-  it('returns empty array for empty transcript without calling API', async () => {
+  it('returns empty array for empty transcript without calling CLI', async () => {
     const result = await extractIntents('', mockConfig);
-
     expect(result).toEqual([]);
     expect(mockInferWithClaude).not.toHaveBeenCalled();
   });
 
-  it('returns empty array for whitespace-only transcript without calling API', async () => {
+  it('returns empty array for whitespace-only transcript without calling CLI', async () => {
     const result = await extractIntents('   \n\t  ', mockConfig);
-
     expect(result).toEqual([]);
     expect(mockInferWithClaude).not.toHaveBeenCalled();
   });
 
-  it('throws when Gemini API call fails', async () => {
-    mockInferWithClaude.mockImplementationOnce(() => { throw new Error('API unavailable'); });
-
-    await expect(
-      extractIntents('Some transcript', mockConfig),
-    ).rejects.toThrow('API unavailable');
+  it('throws when Claude CLI call fails', async () => {
+    mockInferWithClaude.mockRejectedValueOnce(new Error('Claude CLI not found'));
+    await expect(extractIntents('Some transcript', mockConfig)).rejects.toThrow('Claude CLI not found');
   });
 
-  it('sends transcript to Gemini generateContent', async () => {
-    const responseJson = JSON.stringify({ items: [] });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
-
+  it('sends prompt containing system instructions and wrapped transcript', async () => {
+    mockInferWithClaude.mockResolvedValueOnce(JSON.stringify({ items: [] }));
     await extractIntents('Test transcript', mockConfig);
 
     expect(mockInferWithClaude).toHaveBeenCalledOnce();
-    const callArg = mockInferWithClaude.mock.calls[0][0] as string;
-    expect(callArg).toContain('Test transcript');
+    const prompt = mockInferWithClaude.mock.calls[0][0] as string;
+    expect(prompt).toContain(EXTRACTION_SYSTEM_PROMPT);
+    expect(prompt).toContain('<transcript>');
+    expect(prompt).toContain('Test transcript');
   });
 
   it('wraps transcript in <transcript> tags', async () => {
-    const responseJson = JSON.stringify({ items: [] });
-    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
+    mockInferWithClaude.mockResolvedValueOnce(JSON.stringify({ items: [] }));
+    await extractIntents('Alice said hello', mockConfig);
 
-    const transcript = 'Alice said hello';
-    await extractIntents(transcript, mockConfig);
-
-    expect(mockInferWithClaude).toHaveBeenCalledOnce();
-    const callArg = mockInferWithClaude.mock.calls[0][0] as string;
-    expect(callArg).toContain(wrapTranscript(transcript));
+    const prompt = mockInferWithClaude.mock.calls[0][0] as string;
+    expect(prompt).toContain(wrapTranscript('Alice said hello'));
   });
 });

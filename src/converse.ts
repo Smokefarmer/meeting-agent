@@ -6,15 +6,13 @@
  * for a conversational response using meeting context, and speaks the answer.
  */
 
-import { inferWithClaude } from './openclaw-llm.js';
 import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
+import { inferWithClaude } from './claude-llm.js';
 import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
-
-
 const MAX_RESPONSE_LENGTH = 200;
 const QA_COOLDOWN_MS = 5_000;
 const QA_MAX_PER_SESSION = 30;
@@ -77,10 +75,10 @@ export async function generateResponse(
   _config: OpenClawConfig,
 ): Promise<ConversationResponse> {
   const context = buildMeetingContext(session);
-  const prompt = `${CONVERSATION_SYSTEM_PROMPT}\n\n${context}\n\nQuestion: ${question}`;
-  const responseText = inferWithClaude(prompt);
+  const prompt = CONVERSATION_SYSTEM_PROMPT + '\n\n' + context + '\n\nQuestion: ' + question;
+  const text = await inferWithClaude(prompt);
 
-  return parseConversationResponse(responseText);
+  return parseConversationResponse(text);
 }
 
 /**

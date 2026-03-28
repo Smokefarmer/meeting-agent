@@ -35,7 +35,7 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test-bot',
   recallApiKey: 'test-recall',
   elevenLabsApiKey: 'test-eleven',
-  geminiApiKey: 'test-gemini',
+
   githubToken: null,
   githubRepo: null,
   telegramBotToken: 'bot123456:ABC-DEF',

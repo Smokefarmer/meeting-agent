@@ -49,7 +49,7 @@ const mockConfigWithTTS: OpenClawConfig = {
   instanceName: 'TestClaw',
   recallApiKey: 'sk-recall-test',
   elevenLabsApiKey: 'sk-eleven-test',
-  geminiApiKey: 'gemini-test-key',
+
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,

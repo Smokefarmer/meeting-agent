@@ -10,6 +10,7 @@ import type { OpenClawConfig } from './config.js';
 function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
   process.env.RECALL_API_KEY = 'sk-recall-test';
+  // No GEMINI_API_KEY needed — LLM via Claude CLI
 }
 
 /** Remove all config-related env vars so tests start clean. */
@@ -53,6 +54,7 @@ describe('loadConfig', () => {
       expect(config.instanceName).toBe('test-bot');
       expect(config.recallApiKey).toBe('sk-recall-test');
       expect(config.elevenLabsApiKey).toBe('sk-eleven-test');
+      // No geminiApiKey — LLM inference via Claude CLI
       expect(config.githubToken).toBe('ghp-test-token');
       expect(config.githubRepo).toBe('org/repo');
       expect(config.telegramBotToken).toBe('tg-bot-test');
@@ -65,21 +67,24 @@ describe('loadConfig', () => {
     it('throws ZodError when OPENCLAW_INSTANCE_NAME is missing', () => {
       process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-    
+      // No GEMINI_API_KEY needed — LLM via Claude CLI
+
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('throws ZodError when RECALL_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-    
+      // No GEMINI_API_KEY needed — LLM via Claude CLI
+
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('defaults elevenLabsApiKey to null when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.RECALL_API_KEY = 'sk-recall-test';
-    
+      // No GEMINI_API_KEY needed — LLM via Claude CLI
+
       const config = loadConfig();
 
       expect(config.elevenLabsApiKey).toBeNull();
@@ -99,6 +104,7 @@ describe('loadConfig', () => {
         const paths = zodErr.issues.map((issue) => issue.path[0]);
         expect(paths).toContain('instanceName');
         expect(paths).toContain('recallApiKey');
+        // No geminiApiKey — removed
       }
     });
   });
@@ -182,6 +188,7 @@ describe('loadConfig', () => {
       expect(
         config.elevenLabsApiKey === null || typeof config.elevenLabsApiKey === 'string',
       ).toBe(true);
+      // No geminiApiKey — LLM via Claude CLI
       expect(typeof config.confidenceThreshold).toBe('number');
     });
   });
