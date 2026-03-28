@@ -9,7 +9,8 @@
 import { spawn } from 'node:child_process';
 
 const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 1000;
+const RETRY_BASE_MS = 1_000;
+const MAX_INFLIGHT = 2;
 const CLI_TIMEOUT_MS = 60_000;
 const CLI_MODEL = 'claude-haiku-4-5';
 const SUBAGENT_TIMEOUT_MS = 60_000;
@@ -79,6 +80,43 @@ export interface PluginApi {
 }
 
 // ---------------------------------------------------------------------------
+// Rate-limit detection
+// ---------------------------------------------------------------------------
+
+const RATE_LIMIT_RE = /\b429\b|rate.?limit|too many requests|overloaded/i;
+
+export function isRateLimitError(err: unknown): boolean {
+  return err instanceof Error && RATE_LIMIT_RE.test(err.message);
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight concurrency limiter — caps inflight LLM calls process-wide.
+// Does NOT queue: if at capacity, the call is rejected immediately so the
+// meeting pipeline stays responsive instead of piling up stale work.
+// ---------------------------------------------------------------------------
+
+let inflight = 0;
+
+export function tryAcquire(): boolean {
+  if (inflight >= MAX_INFLIGHT) return false;
+  inflight++;
+  return true;
+}
+
+export function releaseSlot(): void {
+  inflight = Math.max(0, inflight - 1);
+}
+
+/** Visible for tests only. */
+export function _getInflight(): number { return inflight; }
+export function _resetInflight(): void {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+    throw new Error('_resetInflight is only available in test environments');
+  }
+  inflight = 0;
+}
+
+// ---------------------------------------------------------------------------
 // Subagent LLM client (OpenClaw production)
 // ---------------------------------------------------------------------------
 
@@ -107,57 +145,14 @@ function extractTextContent(content: string | Array<{ type?: string; text?: stri
 export function createSubagentLlmClient(api: PluginApi, meetingId?: string): LlmClient {
   return {
     async infer(prompt: string): Promise<string> {
-      let lastError: unknown;
-
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const sessionKey = makeSessionKey(meetingId);
-
-        try {
-          const { runId } = await api.runtime.subagent.run({
-            sessionKey,
-            message: prompt,
-            deliver: false,
-            model: SUBAGENT_MODEL,
-          });
-
-          const result = await api.runtime.subagent.waitForRun({
-            runId,
-            timeoutMs: SUBAGENT_TIMEOUT_MS,
-          });
-
-          if (result.status === 'timeout') {
-            throw new Error('OpenClaw subagent timed out');
-          }
-          if (result.status === 'error') {
-            throw new Error(`OpenClaw subagent error: ${result.error ?? 'Unknown'}`);
-          }
-
-          const { messages } = await api.runtime.subagent.getSessionMessages({ sessionKey });
-
-          const lastAssistant = [...messages]
-            .reverse()
-            .find((m) => m.role === 'assistant');
-
-          const text = extractTextContent(lastAssistant?.content);
-          if (text.trim().length === 0) {
-            throw new Error('OpenClaw subagent returned an empty response');
-          }
-
-          // Clean up session to avoid buildup
-          api.runtime.subagent.deleteSession({ sessionKey }).catch(() => {});
-
-          return text.trim();
-        } catch (err) {
-          lastError = err;
-          if (attempt < MAX_RETRIES - 1) {
-            await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
-          }
-        }
+      if (!tryAcquire()) {
+        throw new Error('LLM concurrency limit reached — call dropped to stay responsive');
       }
-
-      throw new Error(
-        `LLM inference failed after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`,
-      );
+      try {
+        return await subagentInferWithRetry(api, prompt, meetingId);
+      } finally {
+        releaseSlot();
+      }
     },
 
     async inferAndDeliver(prompt: string): Promise<void> {
@@ -178,6 +173,73 @@ export function createSubagentLlmClient(api: PluginApi, meetingId?: string): Llm
   };
 }
 
+async function subagentInferWithRetry(
+  api: PluginApi,
+  prompt: string,
+  meetingId?: string,
+): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const sessionKey = makeSessionKey(meetingId);
+
+    try {
+      const { runId } = await api.runtime.subagent.run({
+        sessionKey,
+        message: prompt,
+        deliver: false,
+        model: SUBAGENT_MODEL,
+      });
+
+      const result = await api.runtime.subagent.waitForRun({
+        runId,
+        timeoutMs: SUBAGENT_TIMEOUT_MS,
+      });
+
+      if (result.status === 'timeout') {
+        throw new Error('OpenClaw subagent timed out');
+      }
+      if (result.status === 'error') {
+        const detail = result.error ? String(result.error).slice(0, 120) : 'Unknown';
+        throw new Error(`OpenClaw subagent error: ${detail}`);
+      }
+
+      const { messages } = await api.runtime.subagent.getSessionMessages({ sessionKey });
+
+      const lastAssistant = [...messages]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+
+      const text = extractTextContent(lastAssistant?.content);
+      if (text.trim().length === 0) {
+        throw new Error('OpenClaw subagent returned an empty response');
+      }
+
+      api.runtime.subagent.deleteSession({ sessionKey }).catch(() => {});
+
+      return text.trim();
+    } catch (err) {
+      lastError = err;
+
+      // 429 / rate-limit: throw immediately — retrying just burns more quota
+      if (isRateLimitError(err)) {
+        throw new Error(
+          `LLM rate-limited: ${err instanceof Error ? err.message.slice(0, 120) : 'Unknown'}`,
+        );
+      }
+
+      // Transient errors: short backoff
+      if (attempt < MAX_RETRIES - 1) {
+        await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
+      }
+    }
+  }
+
+  throw new Error(
+    `LLM inference failed after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // CLI LLM client (local dev / fallback)
 // ---------------------------------------------------------------------------
@@ -185,35 +247,52 @@ export function createSubagentLlmClient(api: PluginApi, meetingId?: string): Llm
 export function createCliLlmClient(): LlmClient {
   return {
     async infer(prompt: string): Promise<string> {
-      let lastError: unknown;
-
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        try {
-          const result = await execClaude(prompt);
-          if (result.trim().length === 0) {
-            throw new Error('Claude CLI returned an empty response');
-          }
-          return result.trim();
-        } catch (err) {
-          lastError = err;
-
-          if (err instanceof Error && err.message.includes('ENOENT')) {
-            throw new Error(
-              'Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code',
-            );
-          }
-
-          if (attempt < MAX_RETRIES - 1) {
-            await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
-          }
-        }
+      if (!tryAcquire()) {
+        throw new Error('LLM concurrency limit reached — call dropped to stay responsive');
       }
-
-      throw new Error(
-        `Claude inference failed after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`,
-      );
+      try {
+        return await cliInferWithRetry(prompt);
+      } finally {
+        releaseSlot();
+      }
     },
   };
+}
+
+async function cliInferWithRetry(prompt: string): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const result = await execClaude(prompt);
+      if (result.trim().length === 0) {
+        throw new Error('Claude CLI returned an empty response');
+      }
+      return result.trim();
+    } catch (err) {
+      lastError = err;
+
+      if (err instanceof Error && err.message.includes('ENOENT')) {
+        throw new Error(
+          'Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code',
+        );
+      }
+
+      if (isRateLimitError(err)) {
+        throw new Error(
+          `CLI rate-limited: ${err instanceof Error ? err.message.slice(0, 120) : 'Unknown'}`,
+        );
+      }
+
+      if (attempt < MAX_RETRIES - 1) {
+        await sleep(RETRY_BASE_MS * Math.pow(2, attempt));
+      }
+    }
+  }
+
+  throw new Error(
+    `Claude inference failed after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`,
+  );
 }
 
 function execClaude(prompt: string): Promise<string> {

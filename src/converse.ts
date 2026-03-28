@@ -14,7 +14,7 @@ import type { LlmClient } from './llm.js';
 import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
 const MAX_RESPONSE_LENGTH = 200;
-const QA_COOLDOWN_MS = 2_000;
+const QA_COOLDOWN_MS = 10_000;
 const QA_MAX_PER_SESSION = 50;
 
 const ConversationResponseSchema = z.object({
