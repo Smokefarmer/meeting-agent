@@ -26,7 +26,7 @@ export function extractMeetUrl(message: string): string | null {
  * Call this from the plugin entry point's register() callback.
  */
 export function registerMeetingClaw(api: PluginApi): void {
-  const config = loadConfig();
+  const config = loadConfig(api.pluginConfig);
   const llmClient = createSubagentLlmClient(api);
 
   // Start webhook server once (receives Recall.ai transcript events via ngrok)
@@ -49,7 +49,7 @@ export async function joinMeetingFlow(
   api: PluginApi,
   replyFn: (msg: string) => Promise<void>,
 ): Promise<void> {
-  const config = loadConfig();
+  const config = loadConfig(api.pluginConfig);
   const llmClient = createSubagentLlmClient(api, undefined);
   const session = new MeetingSession(meetUrl, config);
 
@@ -86,3 +86,16 @@ export async function joinMeetingFlow(
     console.error('Pipeline error:', safeErrorMessage(err));
   });
 }
+
+/**
+ * OpenClaw plugin lifecycle exports.
+ * "register" is called when the plugin is loaded.
+ * "activate" is an alias for compatibility.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function register(api: any): void {
+  registerMeetingClaw(api);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const activate = register;

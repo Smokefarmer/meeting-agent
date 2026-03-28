@@ -55,6 +55,7 @@ export interface PluginRuntime {
 
 export interface PluginApi {
   runtime: PluginRuntime;
+  pluginConfig?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
