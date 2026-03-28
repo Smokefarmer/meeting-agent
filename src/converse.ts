@@ -14,8 +14,8 @@ import { inferWithClaude } from './claude-llm.js';
 import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
 const MAX_RESPONSE_LENGTH = 200;
-const QA_COOLDOWN_MS = 5_000;
-const QA_MAX_PER_SESSION = 30;
+const QA_COOLDOWN_MS = 2_000;
+const QA_MAX_PER_SESSION = 50;
 
 const ConversationResponseSchema = z.object({
   answer: z.string().min(1).max(MAX_RESPONSE_LENGTH * 2),

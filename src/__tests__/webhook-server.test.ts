@@ -86,7 +86,13 @@ describe('webhook-server', () => {
   let mockSession: MeetingSession;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.mocked(detectWakeWord).mockReturnValue(null);
+    vi.mocked(handleAddressedSpeech).mockResolvedValue(undefined);
+    vi.mocked(extractIntents).mockResolvedValue([]);
+    vi.mocked(isDuplicate).mockReturnValue(false);
+    vi.mocked(routeIntent).mockResolvedValue(undefined);
+    vi.mocked(generateAndSendSummary).mockResolvedValue(undefined);
     _sessions.clear();
     delete process.env.RECALL_WEBHOOK_SECRET;
 
@@ -278,6 +284,70 @@ describe('webhook-server', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(extractIntents).not.toHaveBeenCalled();
+    });
+
+    it('stores pending wake word when bare name detected (no question)', async () => {
+      registerSession(mockSession);
+      // detectWakeWord returns '' for bare "Hey George" — wake word found, no question
+      vi.mocked(detectWakeWord).mockReturnValueOnce('');
+
+      await request(app).post('/').send(makeTranscriptEvent(BOT_ID, 'Hey TestBot', 'Alice'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Should NOT call handleAddressedSpeech yet — waiting for follow-up
+      expect(handleAddressedSpeech).not.toHaveBeenCalled();
+
+      // Verify pending state was set
+      const state = _sessions.get(BOT_ID)!;
+      expect(state.pendingWakeWord).not.toBeNull();
+      expect(state.pendingWakeWord!.speaker).toBe('Alice');
+    });
+
+    it('resolves pending wake word with next segment as question', async () => {
+      registerSession(mockSession);
+      // Directly set pending wake word state (avoids async timing issues with supertest)
+      const state = _sessions.get(BOT_ID)!;
+      state.pendingWakeWord = { speaker: 'Alice', timestamp: Date.now() };
+
+      // Next segment arrives — should be treated as the question
+      await request(app).post('/').send(makeTranscriptEvent(BOT_ID, 'how are you doing', 'Alice'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(handleAddressedSpeech).toHaveBeenCalledWith(
+        'how are you doing',
+        mockSession,
+        TEST_CONFIG,
+      );
+      expect(state.pendingWakeWord).toBeNull();
+    });
+
+    it('expires pending wake word after TTL', async () => {
+      registerSession(mockSession);
+      const state = _sessions.get(BOT_ID)!;
+      state.pendingWakeWord = { speaker: 'Alice', timestamp: Date.now() - 6000 }; // 6s ago
+
+      await request(app).post('/').send(makeTranscriptEvent(BOT_ID, 'unrelated speech', 'Bob'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Should NOT route to Q&A — pending wake word expired
+      expect(handleAddressedSpeech).not.toHaveBeenCalled();
+      expect(state.pendingWakeWord).toBeNull();
+    });
+
+    it('handles full wake word + question in one segment (no pending needed)', async () => {
+      registerSession(mockSession);
+      vi.mocked(detectWakeWord).mockReturnValue('what is the plan');
+
+      await request(app).post('/').send(makeTranscriptEvent(BOT_ID, 'Hey TestBot what is the plan', 'Alice'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(handleAddressedSpeech).toHaveBeenCalledWith(
+        'what is the plan',
+        mockSession,
+        TEST_CONFIG,
+      );
+      const state = _sessions.get(BOT_ID)!;
+      expect(state.pendingWakeWord).toBeNull();
     });
   });
 
