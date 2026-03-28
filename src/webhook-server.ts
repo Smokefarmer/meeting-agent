@@ -15,10 +15,19 @@ import { safeErrorMessage } from './errors.js';
 
 const EXTRACTION_INTERVAL_WORDS = 50;
 
+/** How long a bare wake word ("Hey George") waits for a follow-up question. */
+const PENDING_WAKE_WORD_TTL_MS = 5_000;
+
+interface PendingWakeWord {
+  speaker: string | null;
+  timestamp: number;
+}
+
 interface SessionState {
   session: MeetingSession;
   buffer: string;
   wordCount: number;
+  pendingWakeWord: PendingWakeWord | null;
 }
 
 // Active meeting sessions keyed by botId
@@ -52,7 +61,7 @@ function verifySignature(rawBody: Buffer, signature: string | undefined): boolea
  */
 export function registerSession(session: MeetingSession): void {
   if (!session.botId) throw new Error('Cannot register session without botId');
-  sessions.set(session.botId, { session, buffer: '', wordCount: 0 });
+  sessions.set(session.botId, { session, buffer: '', wordCount: 0, pendingWakeWord: null });
   console.log(`[webhook] Session registered for bot ${session.botId}`);
 }
 
@@ -105,17 +114,42 @@ function createApp(config: OpenClawConfig): express.Express {
     state.session.addSegment(segment);
     console.log(`[webhook] ${speakerName ?? 'Unknown'}: ${text}`);
 
-    // Check wake word first
+    // --- Wake word detection (handles split segments) ---
+
+    // 1. Check if there's a pending wake word waiting for a follow-up question
+    if (state.pendingWakeWord) {
+      const elapsed = Date.now() - state.pendingWakeWord.timestamp;
+      if (elapsed < PENDING_WAKE_WORD_TTL_MS) {
+        // This segment is the follow-up question — route to Q&A
+        state.pendingWakeWord = null;
+        console.log(`[webhook] Pending wake word resolved: "${text}"`);
+        handleAddressedSpeech(text, state.session, config).catch((err) => {
+          console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
+        });
+        return;
+      }
+      // Expired — discard the pending wake word
+      state.pendingWakeWord = null;
+    }
+
+    // 2. Check current segment for wake word
     const question = detectWakeWord(segment, config.instanceName);
-    if (question !== null && question.length > 0) {
-      console.log(`[webhook] Wake word detected: "${question}"`);
-      handleAddressedSpeech(question, state.session, config).catch((err) => {
-        console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
-      });
+    if (question !== null) {
+      if (question.length > 0) {
+        // Full wake word + question in one segment — respond immediately
+        console.log(`[webhook] Wake word + question: "${question}"`);
+        handleAddressedSpeech(question, state.session, config).catch((err) => {
+          console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
+        });
+      } else {
+        // Bare wake word ("Hey George") — wait for follow-up segment
+        console.log(`[webhook] Wake word detected, waiting for question...`);
+        state.pendingWakeWord = { speaker: speakerName, timestamp: Date.now() };
+      }
       return;
     }
 
-    // Accumulate buffer for intent extraction
+    // --- Intent extraction accumulation ---
     state.buffer += ' ' + text;
     state.wordCount += words.length;
 
