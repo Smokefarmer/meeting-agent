@@ -1,6 +1,9 @@
 /**
  * Recall.ai webhook server — receives real-time transcript events and drives the pipeline.
  * Listens on a configurable port, exposed via ngrok.
+ *
+ * Wake word detection uses a rolling text buffer to handle Recall.ai's aggressive
+ * word splitting (e.g. "hey geor" + "ge" across two segments).
  */
 
 import express from 'express';
@@ -15,8 +18,17 @@ import { safeErrorMessage } from './errors.js';
 
 const EXTRACTION_INTERVAL_WORDS = 50;
 
-/** How long a bare wake word ("Hey George") waits for a follow-up question. */
+/** Max age of a wake word buffer entry before it's discarded. */
+const WAKE_BUFFER_TTL_MS = 5_000;
+
+/** How long a bare wake word waits for a follow-up question. */
 const PENDING_WAKE_WORD_TTL_MS = 5_000;
+
+interface WakeBufferEntry {
+  text: string;
+  speaker: string | null;
+  timestamp: number;
+}
 
 interface PendingWakeWord {
   speaker: string | null;
@@ -27,6 +39,8 @@ interface SessionState {
   session: MeetingSession;
   buffer: string;
   wordCount: number;
+  /** Rolling buffer of recent segments for cross-segment wake word detection. */
+  wakeBuffer: WakeBufferEntry[];
   pendingWakeWord: PendingWakeWord | null;
 }
 
@@ -41,7 +55,7 @@ let serverStarted = false;
  */
 function verifySignature(rawBody: Buffer, signature: string | undefined): boolean {
   const secret = process.env.RECALL_WEBHOOK_SECRET;
-  if (!secret) return true; // No secret configured — skip verification (dev mode)
+  if (!secret) return true;
   if (!signature) return false;
 
   const expected = crypto
@@ -61,7 +75,13 @@ function verifySignature(rawBody: Buffer, signature: string | undefined): boolea
  */
 export function registerSession(session: MeetingSession): void {
   if (!session.botId) throw new Error('Cannot register session without botId');
-  sessions.set(session.botId, { session, buffer: '', wordCount: 0, pendingWakeWord: null });
+  sessions.set(session.botId, {
+    session,
+    buffer: '',
+    wordCount: 0,
+    wakeBuffer: [],
+    pendingWakeWord: null,
+  });
   console.log(`[webhook] Session registered for bot ${session.botId}`);
 }
 
@@ -69,10 +89,40 @@ export function unregisterSession(botId: string): void {
   sessions.delete(botId);
 }
 
+/**
+ * Check the rolling wake buffer for a wake word.
+ * Combines recent segment texts into a single string and runs detection.
+ * This handles Recall.ai splitting words mid-character across segments
+ * (e.g. "hey geor" + "ge" → "hey george").
+ */
+function checkWakeBuffer(
+  wakeBuffer: WakeBufferEntry[],
+  instanceName: string,
+): { question: string; matchedUpTo: number } | null {
+  if (wakeBuffer.length === 0) return null;
+
+  // Try combining from the most recent entries backward
+  // Check last 1, last 2, last 3... entries
+  for (let start = Math.max(0, wakeBuffer.length - 5); start < wakeBuffer.length; start++) {
+    const combined = wakeBuffer.slice(start).map((e) => e.text).join(' ');
+    const segment: TranscriptSegment = {
+      text: combined,
+      speaker: wakeBuffer[wakeBuffer.length - 1].speaker,
+      timestamp: wakeBuffer[wakeBuffer.length - 1].timestamp,
+    };
+
+    const result = detectWakeWord(segment, instanceName);
+    if (result !== null) {
+      return { question: result, matchedUpTo: wakeBuffer.length };
+    }
+  }
+
+  return null;
+}
+
 function createApp(config: OpenClawConfig): express.Express {
   const app = express();
 
-  // Parse JSON but also keep raw body for signature verification
   app.use(express.json({
     verify: (req: express.Request & { rawBody?: Buffer }, _res, buf) => {
       req.rawBody = buf;
@@ -105,22 +155,22 @@ function createApp(config: OpenClawConfig): express.Express {
     if (!text) return;
 
     const speakerName: string | null = event?.data?.data?.participant?.name ?? null;
+    const now = Date.now();
     const segment: TranscriptSegment = {
       text,
       speaker: speakerName,
-      timestamp: Date.now(),
+      timestamp: now,
     };
 
     state.session.addSegment(segment);
     console.log(`[webhook] ${speakerName ?? 'Unknown'}: ${text}`);
 
-    // --- Wake word detection (handles split segments) ---
+    // --- Wake word detection ---
 
     // 1. Check if there's a pending wake word waiting for a follow-up question
     if (state.pendingWakeWord) {
-      const elapsed = Date.now() - state.pendingWakeWord.timestamp;
+      const elapsed = now - state.pendingWakeWord.timestamp;
       if (elapsed < PENDING_WAKE_WORD_TTL_MS) {
-        // This segment is the follow-up question — route to Q&A
         state.pendingWakeWord = null;
         console.log(`[webhook] Pending wake word resolved: "${text}"`);
         handleAddressedSpeech(text, state.session, config).catch((err) => {
@@ -128,23 +178,27 @@ function createApp(config: OpenClawConfig): express.Express {
         });
         return;
       }
-      // Expired — discard the pending wake word
       state.pendingWakeWord = null;
     }
 
-    // 2. Check current segment for wake word
-    const question = detectWakeWord(segment, config.instanceName);
-    if (question !== null) {
-      if (question.length > 0) {
-        // Full wake word + question in one segment — respond immediately
-        console.log(`[webhook] Wake word + question: "${question}"`);
-        handleAddressedSpeech(question, state.session, config).catch((err) => {
+    // 2. Add to rolling wake buffer and prune old entries
+    state.wakeBuffer.push({ text, speaker: speakerName, timestamp: now });
+    state.wakeBuffer = state.wakeBuffer.filter((e) => now - e.timestamp < WAKE_BUFFER_TTL_MS);
+
+    // 3. Check combined buffer for wake word (handles mid-word splits)
+    const wakeMatch = checkWakeBuffer(state.wakeBuffer, config.instanceName);
+    if (wakeMatch) {
+      // Clear wake buffer — wake word consumed
+      state.wakeBuffer = [];
+
+      if (wakeMatch.question.length > 0) {
+        console.log(`[webhook] Wake word + question: "${wakeMatch.question}"`);
+        handleAddressedSpeech(wakeMatch.question, state.session, config).catch((err) => {
           console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
         });
       } else {
-        // Bare wake word ("Hey George") — wait for follow-up segment
         console.log(`[webhook] Wake word detected, waiting for question...`);
-        state.pendingWakeWord = { speaker: speakerName, timestamp: Date.now() };
+        state.pendingWakeWord = { speaker: speakerName, timestamp: now };
       }
       return;
     }
@@ -184,7 +238,6 @@ function createApp(config: OpenClawConfig): express.Express {
     const state = sessions.get(botId);
     if (!state) return;
 
-    // Process any remaining buffer
     const remaining = state.buffer.trim();
     if (remaining) {
       try {
@@ -221,4 +274,4 @@ export function startWebhookServer(port: number, config: OpenClawConfig): void {
 }
 
 // Exported for testing
-export { createApp, sessions as _sessions };
+export { createApp, sessions as _sessions, checkWakeBuffer };
