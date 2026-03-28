@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 const TIMEOUT_MS = 60_000;
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'claude-haiku-4-5';
 
 /**
  * Send a prompt to Claude CLI and return the text response.

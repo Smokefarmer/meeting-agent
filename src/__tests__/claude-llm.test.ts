@@ -76,7 +76,7 @@ describe('inferWithClaude', () => {
     expect(result).toBe('The answer is 42.');
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--print', '--model', 'claude-sonnet-4-6'],
+      ['--print', '--model', 'claude-haiku-4-5'],
       expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
     );
   });
