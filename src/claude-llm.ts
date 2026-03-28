@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 const TIMEOUT_MS = 60_000;
+const MODEL = 'claude-sonnet-4-6';
 
 /**
  * Send a prompt to Claude CLI and return the text response.
@@ -52,7 +53,7 @@ function execClaude(prompt: string): Promise<string> {
     let stderr = '';
     let settled = false;
 
-    const child = spawn('claude', ['--print'], {
+    const child = spawn('claude', ['--print', '--model', MODEL], {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: TIMEOUT_MS,
     });
