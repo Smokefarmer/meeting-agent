@@ -14,11 +14,6 @@ import { MeetingSession } from './session.js';
 import { joinMeeting } from './join.js';
 import { runPipeline } from './pipeline.js';
 import { startWebhookServer, registerSession } from './webhook-server.js';
-import {
-  handleTranscriptWebhook,
-  handleBotDoneWebhook,
-  sessions,
-} from './webhook-handlers.js';
 import { safeErrorMessage } from './errors.js';
 
 const MEET_URL_REGEX = /https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
@@ -78,29 +73,11 @@ export function registerMeetingClaw(api: PluginApi): void {
     } as any);
   }
 
-  // Register HTTP routes via OpenClaw gateway, or fall back to Express
-  if (api.registerHttpRoute) {
-    api.registerHttpRoute({
-      method: 'POST',
-      path: '/webhook/transcript',
-      handler: async (req) => {
-        await handleTranscriptWebhook(req.body, sessions, config, llmClient);
-        return { status: 200 };
-      },
-    });
-
-    api.registerHttpRoute({
-      method: 'POST',
-      path: '/webhook/bot-done',
-      handler: async (req) => {
-        await handleBotDoneWebhook(req.body, sessions, config, llmClient);
-        return { status: 200 };
-      },
-    });
-  } else {
-    // Fallback: standalone Express server (needs ngrok)
-    startWebhookServer(4000, config, llmClient);
-  }
+  // Always start the Express webhook server on port 4000.
+  // Recall.ai sends webhooks to the ngrok URL which forwards to port 4000.
+  // registerHttpRoute would put routes on the gateway port (18789) which
+  // ngrok doesn't reach, so we always use the standalone Express server.
+  startWebhookServer(4000, config, llmClient);
 
   console.log(`[MeetingClaw] Plugin registered (instance: ${config.instanceName})`);
 }
