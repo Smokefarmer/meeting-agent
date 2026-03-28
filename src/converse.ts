@@ -6,7 +6,7 @@
  * for a conversational response using meeting context, and speaks the answer.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { inferWithClaude } from './openclaw-llm.js';
 import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
 import type { MeetingSession } from './session.js';
@@ -14,7 +14,7 @@ import type { OpenClawConfig } from './config.js';
 import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+
 const MAX_RESPONSE_LENGTH = 200;
 const QA_COOLDOWN_MS = 5_000;
 const QA_MAX_PER_SESSION = 30;
@@ -74,18 +74,13 @@ export function detectWakeWord(
 export async function generateResponse(
   question: string,
   session: MeetingSession,
-  config: OpenClawConfig,
+  _config: OpenClawConfig,
 ): Promise<ConversationResponse> {
-  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
-    systemInstruction: CONVERSATION_SYSTEM_PROMPT,
-  });
   const context = buildMeetingContext(session);
+  const prompt = `${CONVERSATION_SYSTEM_PROMPT}\n\n${context}\n\nQuestion: ${question}`;
+  const responseText = inferWithClaude(prompt);
 
-  const result = await model.generateContent(`${context}\n\nQuestion: ${question}`);
-
-  return parseConversationResponse(result.response.text());
+  return parseConversationResponse(responseText);
 }
 
 /**

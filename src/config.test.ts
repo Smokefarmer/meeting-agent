@@ -10,7 +10,6 @@ import type { OpenClawConfig } from './config.js';
 function setRequiredEnvVars(): void {
   process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
   process.env.RECALL_API_KEY = 'sk-recall-test';
-  process.env.GEMINI_API_KEY = 'gemini-test-key';
 }
 
 /** Remove all config-related env vars so tests start clean. */
@@ -19,7 +18,6 @@ function clearConfigEnvVars(): void {
     'OPENCLAW_INSTANCE_NAME',
     'RECALL_API_KEY',
     'ELEVENLABS_API_KEY',
-    'GEMINI_API_KEY',
     'GITHUB_TOKEN',
     'GITHUB_REPO',
     'TELEGRAM_BOT_TOKEN',
@@ -55,7 +53,6 @@ describe('loadConfig', () => {
       expect(config.instanceName).toBe('test-bot');
       expect(config.recallApiKey).toBe('sk-recall-test');
       expect(config.elevenLabsApiKey).toBe('sk-eleven-test');
-      expect(config.geminiApiKey).toBe('gemini-test-key');
       expect(config.githubToken).toBe('ghp-test-token');
       expect(config.githubRepo).toBe('org/repo');
       expect(config.telegramBotToken).toBe('tg-bot-test');
@@ -68,35 +65,24 @@ describe('loadConfig', () => {
     it('throws ZodError when OPENCLAW_INSTANCE_NAME is missing', () => {
       process.env.RECALL_API_KEY = 'sk-recall-test';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
-
+    
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('throws ZodError when RECALL_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
-
+    
       expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('defaults elevenLabsApiKey to null when ELEVENLABS_API_KEY is missing', () => {
       process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
       process.env.RECALL_API_KEY = 'sk-recall-test';
-      process.env.GEMINI_API_KEY = 'gemini-test-key';
-
+    
       const config = loadConfig();
 
       expect(config.elevenLabsApiKey).toBeNull();
-    });
-
-    it('throws ZodError when GEMINI_API_KEY is missing', () => {
-      process.env.OPENCLAW_INSTANCE_NAME = 'test-bot';
-      process.env.RECALL_API_KEY = 'sk-recall-test';
-      process.env.ELEVENLABS_API_KEY = 'sk-eleven-test';
-
-      expect(() => loadConfig()).toThrow(ZodError);
     });
 
     it('throws ZodError when all required vars are missing', () => {
@@ -113,7 +99,6 @@ describe('loadConfig', () => {
         const paths = zodErr.issues.map((issue) => issue.path[0]);
         expect(paths).toContain('instanceName');
         expect(paths).toContain('recallApiKey');
-        expect(paths).toContain('geminiApiKey');
       }
     });
   });
@@ -197,7 +182,6 @@ describe('loadConfig', () => {
       expect(
         config.elevenLabsApiKey === null || typeof config.elevenLabsApiKey === 'string',
       ).toBe(true);
-      expect(typeof config.geminiApiKey).toBe('string');
       expect(typeof config.confidenceThreshold).toBe('number');
     });
   });
