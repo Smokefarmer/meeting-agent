@@ -13,6 +13,7 @@ const RETRY_BASE_MS = 1000;
 const CLI_TIMEOUT_MS = 60_000;
 const CLI_MODEL = 'claude-haiku-4-5';
 const SUBAGENT_TIMEOUT_MS = 60_000;
+const SUBAGENT_MODEL = 'anthropic/claude-haiku-4-5';
 
 /**
  * Abstract LLM client interface. All modules call this instead of
@@ -31,6 +32,7 @@ export interface SubagentApi {
     sessionKey: string;
     message: string;
     deliver?: boolean;
+    model?: string;
   }): Promise<{ runId: string }>;
 
   waitForRun(params: {
@@ -90,6 +92,7 @@ export function createSubagentLlmClient(api: PluginApi, meetingId?: string): Llm
             sessionKey,
             message: prompt,
             deliver: false,
+            model: SUBAGENT_MODEL,
           });
 
           const result = await api.runtime.subagent.waitForRun({
