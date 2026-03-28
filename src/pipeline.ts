@@ -7,7 +7,6 @@ import type { MeetingSession } from './session.js';
 import type { TranscriptSegment } from './models.js';
 import { streamTranscript } from './listen.js';
 import { extractAndRoute } from './extract-and-route.js';
-import { speakGreeting } from './speak.js';
 import { generateAndSendSummary } from './summary.js';
 import { detectWakeWord, handleAddressedSpeech } from './converse.js';
 import { safeErrorMessage } from './errors.js';
@@ -25,7 +24,8 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     console.warn('No websocketUrl — Recall.ai did not return a WebSocket URL.');
   }
 
-  await speakGreeting(config, session.botId);
+  // Bot joins silently — no greeting. Works in the background picking up
+  // intents and only speaks when directly addressed by name.
 
   let bufferText = '';
   let lastExtractionTime = Date.now();
