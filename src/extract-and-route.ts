@@ -5,6 +5,7 @@
 
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
+import type { LlmClient } from './llm.js';
 import { extractIntents } from './detect.js';
 import { isDuplicate } from './dedup.js';
 import { routeIntent } from './route.js';
@@ -16,8 +17,9 @@ export async function extractAndRoute(
   chunk: string,
   session: MeetingSession,
   config: OpenClawConfig,
+  llmClient: LlmClient,
 ): Promise<number> {
-  const intents = await extractIntents(chunk, config);
+  const intents = await extractIntents(chunk, config, llmClient);
   let routed = 0;
 
   for (const intent of intents) {

@@ -1,8 +1,11 @@
 {
   "name": "meeting-claw",
   "version": "0.1.0",
-  "description": "OpenClaw Skill: AI meeting agent that joins calls, extracts intents, and takes action",
+  "description": "OpenClaw Plugin: AI meeting agent that joins calls, extracts intents, and takes action",
   "type": "module",
+  "openclaw": {
+    "extensions": ["./dist/plugin.js"]
+  },
   "engines": {
     "node": ">=22.0.0"
   },

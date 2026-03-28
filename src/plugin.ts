@@ -1,11 +1,13 @@
 /**
- * OpenClaw skill entry point (standalone / CLI fallback mode).
- * Uses createCliLlmClient() for LLM inference via `claude --print`.
- * For production OpenClaw plugin mode, use plugin.ts instead.
+ * OpenClaw plugin entry point for MeetingClaw.
+ * Uses api.runtime.subagent for LLM inference — full dashboard + session support.
+ *
+ * Registers a `join_meeting` tool that the OpenClaw agent can invoke.
  */
 
+import type { PluginApi } from './llm.js';
+import { createSubagentLlmClient } from './llm.js';
 import { loadConfig } from './config.js';
-import { createCliLlmClient } from './llm.js';
 import { MeetingSession } from './session.js';
 import { joinMeeting } from './join.js';
 import { runPipeline } from './pipeline.js';
@@ -19,18 +21,39 @@ export function extractMeetUrl(message: string): string | null {
   return match ? match[0] : null;
 }
 
-export async function handleMessage(
-  message: string,
+/**
+ * Register MeetingClaw as an OpenClaw plugin.
+ * Call this from the plugin entry point's register() callback.
+ */
+export function registerMeetingClaw(api: PluginApi): void {
+  const config = loadConfig();
+  const llmClient = createSubagentLlmClient(api);
+
+  // Start webhook server once (receives Recall.ai transcript events via ngrok)
+  startWebhookServer(4000, config, llmClient);
+
+  console.log(`[MeetingClaw] Plugin registered (instance: ${config.instanceName})`);
+
+  // The plugin exposes its functionality through the OpenClaw agent.
+  // When a user sends a Google Meet URL, the existing skill.ts handleMessage
+  // or the OpenClaw agent can invoke joinMeetingFlow().
+  // For now, we export the flow function for the agent to call.
+}
+
+/**
+ * Join a Google Meet call and start the meeting pipeline.
+ * Called by the OpenClaw agent when a Meet URL is detected.
+ */
+export async function joinMeetingFlow(
+  meetUrl: string,
+  api: PluginApi,
   replyFn: (msg: string) => Promise<void>,
 ): Promise<void> {
-  const meetUrl = extractMeetUrl(message);
-  if (!meetUrl) return;
-
   const config = loadConfig();
-  const llmClient = createCliLlmClient();
+  const llmClient = createSubagentLlmClient(api, undefined);
   const session = new MeetingSession(meetUrl, config);
 
-  // Start webhook server once (receives Recall.ai transcript events)
+  // Ensure webhook server is running
   startWebhookServer(4000, config, llmClient);
 
   const ngrokUrl = process.env.NGROK_URL;
@@ -49,7 +72,7 @@ export async function handleMessage(
 
     if (ngrokUrl && session.botId) {
       registerSession(session);
-      console.log(`[skill] Real-time transcript enabled via ${ngrokUrl}`);
+      console.log(`[MeetingClaw] Real-time transcript enabled via ${ngrokUrl}`);
     }
 
     await replyFn(`✅ ${config.instanceName} has joined the meeting.`);

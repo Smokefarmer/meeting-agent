@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
-import { inferWithClaude } from './claude-llm.js';
+import type { LlmClient } from './llm.js';
 import { respond } from './speak.js';
 import { CONVERSATION_SYSTEM_PROMPT, buildMeetingContext } from './prompts.js';
 const MAX_RESPONSE_LENGTH = 200;
@@ -73,10 +73,11 @@ export async function generateResponse(
   question: string,
   session: MeetingSession,
   _config: OpenClawConfig,
+  llmClient: LlmClient,
 ): Promise<ConversationResponse> {
   const context = buildMeetingContext(session);
   const prompt = CONVERSATION_SYSTEM_PROMPT + '\n\n' + context + '\n\nQuestion: ' + question;
-  const text = await inferWithClaude(prompt);
+  const text = await llmClient.infer(prompt);
 
   return parseConversationResponse(text);
 }
@@ -109,6 +110,7 @@ export async function handleAddressedSpeech(
   question: string,
   session: MeetingSession,
   config: OpenClawConfig,
+  llmClient: LlmClient,
 ): Promise<void> {
   if (!session.botId || !question.trim()) return;
 
@@ -123,7 +125,7 @@ export async function handleAddressedSpeech(
   sessionCooldowns.set(session.meetingId, state);
 
   try {
-    const response = await generateResponse(question, session, config);
+    const response = await generateResponse(question, session, config, llmClient);
 
     const spokenAnswer = response.answer.length > MAX_RESPONSE_LENGTH
       ? response.answer.slice(0, MAX_RESPONSE_LENGTH - 3) + '...'

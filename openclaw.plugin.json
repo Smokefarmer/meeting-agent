@@ -1,0 +1,20 @@
+{
+  "id": "meeting-claw",
+  "name": "MeetingClaw",
+  "description": "AI meeting assistant — joins Google Meet calls, extracts intents, creates GitHub issues, answers questions by name",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "instanceName": { "type": "string", "description": "Bot display name in the meeting" },
+      "recallApiKey": { "type": "string", "description": "Recall.ai API key", "secret": true },
+      "elevenLabsApiKey": { "type": "string", "description": "ElevenLabs TTS API key (optional)", "secret": true },
+      "githubToken": { "type": "string", "description": "GitHub personal access token", "secret": true },
+      "githubRepo": { "type": "string", "description": "GitHub repo for issues (owner/repo)" },
+      "telegramBotToken": { "type": "string", "description": "Telegram bot token for summaries", "secret": true },
+      "telegramChatId": { "type": "string", "description": "Telegram chat ID for summaries" },
+      "confidenceThreshold": { "type": "number", "default": 0.85, "description": "Min confidence to auto-create issues" }
+    },
+    "required": ["instanceName", "recallApiKey"]
+  }
+}

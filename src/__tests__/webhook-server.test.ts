@@ -26,7 +26,10 @@ vi.mock('../summary.js', () => ({
   generateAndSendSummary: vi.fn().mockResolvedValue(undefined),
 }));
 
+import type { LlmClient } from '../llm.js';
 import { createApp, registerSession, unregisterSession, _sessions, checkWakeBuffer } from '../webhook-server.js';
+
+const mockLlmClient: LlmClient = { infer: vi.fn() };
 import { extractIntents } from '../detect.js';
 import { isDuplicate } from '../dedup.js';
 import { routeIntent } from '../route.js';
@@ -96,7 +99,7 @@ describe('webhook-server', () => {
     _sessions.clear();
     delete process.env.RECALL_WEBHOOK_SECRET;
 
-    app = createApp(TEST_CONFIG);
+    app = createApp(TEST_CONFIG, mockLlmClient);
     mockSession = createMockSession();
   });
 
@@ -272,6 +275,7 @@ describe('webhook-server', () => {
         'what is the status?',
         mockSession,
         TEST_CONFIG,
+        mockLlmClient,
       );
     });
 
@@ -317,6 +321,7 @@ describe('webhook-server', () => {
         'how are you doing',
         mockSession,
         TEST_CONFIG,
+        mockLlmClient,
       );
       expect(state.pendingWakeWord).toBeNull();
     });
@@ -345,6 +350,7 @@ describe('webhook-server', () => {
         'what is the plan',
         mockSession,
         TEST_CONFIG,
+        mockLlmClient,
       );
       const state = _sessions.get(BOT_ID)!;
       expect(state.pendingWakeWord).toBeNull();
@@ -451,7 +457,7 @@ describe('webhook-server', () => {
       expect(res.status).toBe(200);
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(extractIntents).toHaveBeenCalledWith('we need to fix the login page', TEST_CONFIG);
+      expect(extractIntents).toHaveBeenCalledWith('we need to fix the login page', TEST_CONFIG, mockLlmClient);
       expect(generateAndSendSummary).toHaveBeenCalledWith(mockSession, TEST_CONFIG);
     });
 
@@ -503,7 +509,7 @@ describe('webhook-server', () => {
   describe('webhook signature verification', () => {
     it('rejects requests with invalid signature when secret is set', async () => {
       process.env.RECALL_WEBHOOK_SECRET = 'test-secret';
-      app = createApp(TEST_CONFIG);
+      app = createApp(TEST_CONFIG, mockLlmClient);
       registerSession(mockSession);
 
       const body = makeTranscriptEvent(BOT_ID, 'hello');
@@ -520,7 +526,7 @@ describe('webhook-server', () => {
     it('accepts requests with valid HMAC signature', async () => {
       const secret = 'test-secret';
       process.env.RECALL_WEBHOOK_SECRET = secret;
-      app = createApp(TEST_CONFIG);
+      app = createApp(TEST_CONFIG, mockLlmClient);
       registerSession(mockSession);
 
       const body = makeTranscriptEvent(BOT_ID, 'hello world');
@@ -539,7 +545,7 @@ describe('webhook-server', () => {
 
     it('allows all requests when no secret is configured', async () => {
       delete process.env.RECALL_WEBHOOK_SECRET;
-      app = createApp(TEST_CONFIG);
+      app = createApp(TEST_CONFIG, mockLlmClient);
       registerSession(mockSession);
 
       const body = makeTranscriptEvent(BOT_ID, 'hello');
@@ -552,7 +558,7 @@ describe('webhook-server', () => {
 
     it('rejects /bot-done with invalid signature', async () => {
       process.env.RECALL_WEBHOOK_SECRET = 'test-secret';
-      app = createApp(TEST_CONFIG);
+      app = createApp(TEST_CONFIG, mockLlmClient);
       registerSession(mockSession);
 
       const res = await request(app)
