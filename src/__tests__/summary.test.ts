@@ -30,6 +30,7 @@ vi.mock('node:fs/promises', () => ({
 // Import after mocks
 import { generateAndSendSummary } from '../summary.js';
 import { MeetingSession } from '../session.js';
+import type { LlmClient } from '../llm.js';
 
 const mockConfig: OpenClawConfig = {
   instanceName: 'test-bot',
@@ -233,6 +234,79 @@ describe('generateAndSendSummary', () => {
       await generateAndSendSummary(session, mockConfig);
 
       expect(mockAxiosPost).toHaveBeenCalled();
+    });
+  });
+
+  describe('inferAndDeliver integration', () => {
+    it('uses inferAndDeliver when available and skips Telegram', async () => {
+      const mockInferAndDeliver = vi.fn().mockResolvedValue(undefined);
+      const llmClient: LlmClient = {
+        infer: vi.fn(),
+        inferAndDeliver: mockInferAndDeliver,
+      };
+      const intent = createIntent();
+      session.addIntent(intent);
+
+      await generateAndSendSummary(session, mockConfig, llmClient);
+
+      expect(mockInferAndDeliver).toHaveBeenCalledWith(
+        expect.stringContaining('Please send this meeting summary to the user:'),
+      );
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Telegram when inferAndDeliver throws', async () => {
+      const mockInferAndDeliver = vi.fn().mockRejectedValue(new Error('delivery failed'));
+      const llmClient: LlmClient = {
+        infer: vi.fn(),
+        inferAndDeliver: mockInferAndDeliver,
+      };
+      const intent = createIntent();
+      session.addIntent(intent);
+
+      await generateAndSendSummary(session, mockConfig, llmClient);
+
+      expect(mockAxiosPost).toHaveBeenCalled();
+    });
+
+    it('uses Telegram directly when llmClient has no inferAndDeliver', async () => {
+      const llmClient: LlmClient = {
+        infer: vi.fn(),
+      };
+      const intent = createIntent();
+      session.addIntent(intent);
+
+      await generateAndSendSummary(session, mockConfig, llmClient);
+
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        expect.stringContaining('api.telegram.org'),
+        expect.any(Object),
+      );
+    });
+
+    it('uses Telegram directly when no llmClient provided', async () => {
+      const intent = createIntent();
+      session.addIntent(intent);
+
+      await generateAndSendSummary(session, mockConfig);
+
+      expect(mockAxiosPost).toHaveBeenCalled();
+    });
+
+    it('passes the full markdown in the inferAndDeliver prompt', async () => {
+      const mockInferAndDeliver = vi.fn().mockResolvedValue(undefined);
+      const llmClient: LlmClient = {
+        infer: vi.fn(),
+        inferAndDeliver: mockInferAndDeliver,
+      };
+      const intent = createIntent();
+      session.addIntent(intent);
+
+      await generateAndSendSummary(session, mockConfig, llmClient);
+
+      const prompt = mockInferAndDeliver.mock.calls[0][0] as string;
+      expect(prompt).toContain('# Meeting Summary');
+      expect(prompt).toContain('Fix login issue');
     });
   });
 

@@ -16,7 +16,7 @@ import type { OpenClawConfig } from './config.js';
 const DEFAULT_VOICE_ID = 'aOcS60CY8CoaVaZfqqb5';
 
 /** Model optimised for lowest latency. */
-const TTS_MODEL_ID = 'eleven_turbo_v2_5';
+const TTS_MODEL_ID = 'eleven_flash_v2_5';
 
 /** Output format suitable for Recall.ai playback. */
 const OUTPUT_FORMAT = 'mp3_44100_128' as const;
@@ -113,39 +113,32 @@ async function speakTTS(
       },
     );
 
-    const audioBuffer = await collectStream(audioStream);
-    const b64Data = audioBuffer.toString('base64');
-
-    await axios.post(
-      `${RECALL_BASE_URL}/bot/${botId}/output_audio/`,
-      { kind: 'mp3', b64_data: b64Data },
-      {
-        headers: {
-          Authorization: `Token ${recallApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+    const reader = audioStream.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        const b64Data = Buffer.from(value).toString('base64');
+        // Fire-and-forget: errors are caught silently per module contract
+        axios.post(
+          `${RECALL_BASE_URL}/bot/${botId}/output_audio/`,
+          { kind: 'mp3', b64_data: b64Data },
+          {
+            headers: {
+              Authorization: `Token ${recallApiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`speakTTS() chunk POST failed (silent degradation): ${message}`);
+        });
+      }
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`speakTTS() failed (silent degradation): ${message}`);
   }
-}
-
-/**
- * Collect a web-standard `ReadableStream<Uint8Array>` into a single `Buffer`.
- */
-async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
-  }
-
-  return Buffer.concat(chunks);
 }
 
 /**

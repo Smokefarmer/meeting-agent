@@ -3,6 +3,8 @@
  * Uses api.runtime.subagent for LLM inference — full dashboard + session support.
  *
  * Registers a `join_meeting` tool that the OpenClaw agent can invoke.
+ * Registers HTTP routes via OpenClaw gateway when available, otherwise falls back
+ * to a standalone Express server (needs ngrok).
  */
 
 import type { PluginApi } from './llm.js';
@@ -12,32 +14,91 @@ import { MeetingSession } from './session.js';
 import { joinMeeting } from './join.js';
 import { runPipeline } from './pipeline.js';
 import { startWebhookServer, registerSession } from './webhook-server.js';
+import {
+  handleTranscriptWebhook,
+  handleBotDoneWebhook,
+  sessions,
+} from './webhook-handlers.js';
 import { safeErrorMessage } from './errors.js';
 
 const MEET_URL_REGEX = /https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
+
+let registered = false;
 
 export function extractMeetUrl(message: string): string | null {
   const match = message.match(MEET_URL_REGEX);
   return match ? match[0] : null;
 }
 
+/** Reset registration flag (for tests only). */
+export function _resetRegistered(): void {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+    throw new Error('_resetRegistered is only available in test environments');
+  }
+  registered = false;
+}
+
 /**
  * Register MeetingClaw as an OpenClaw plugin.
- * Call this from the plugin entry point's register() callback.
+ * Idempotent — repeated calls are no-ops.
  */
 export function registerMeetingClaw(api: PluginApi): void {
+  if (registered) return;
+  registered = true;
+
   const config = loadConfig(api.pluginConfig);
   const llmClient = createSubagentLlmClient(api);
 
-  // Start webhook server once (receives Recall.ai transcript events via ngrok)
-  startWebhookServer(4000, config, llmClient);
+  // Register the join_meeting tool if the platform supports it
+  if (api.registerTool) {
+    api.registerTool({
+      name: 'join_meeting',
+      description: 'Join a Google Meet call and start listening for action items, bugs, features, and decisions',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          meeting_url: {
+            type: 'string',
+            description: 'Google Meet URL (e.g. https://meet.google.com/abc-defg-hij)',
+          },
+        },
+        required: ['meeting_url'],
+      },
+      handler: async (input) => {
+        const meetUrl = String(input['meeting_url']);
+        await joinMeetingFlow(meetUrl, api, async (msg) => {
+          console.log(`[MeetingClaw] ${msg}`);
+        });
+        return { status: 'joined', meeting_url: meetUrl };
+      },
+    });
+  }
+
+  // Register HTTP routes via OpenClaw gateway, or fall back to Express
+  if (api.registerHttpRoute) {
+    api.registerHttpRoute({
+      method: 'POST',
+      path: '/webhook/transcript',
+      handler: async (req) => {
+        await handleTranscriptWebhook(req.body, sessions, config, llmClient);
+        return { status: 200 };
+      },
+    });
+
+    api.registerHttpRoute({
+      method: 'POST',
+      path: '/webhook/bot-done',
+      handler: async (req) => {
+        await handleBotDoneWebhook(req.body, sessions, config, llmClient);
+        return { status: 200 };
+      },
+    });
+  } else {
+    // Fallback: standalone Express server (needs ngrok)
+    startWebhookServer(4000, config, llmClient);
+  }
 
   console.log(`[MeetingClaw] Plugin registered (instance: ${config.instanceName})`);
-
-  // The plugin exposes its functionality through the OpenClaw agent.
-  // When a user sends a Google Meet URL, the existing skill.ts handleMessage
-  // or the OpenClaw agent can invoke joinMeetingFlow().
-  // For now, we export the flow function for the agent to call.
 }
 
 /**
@@ -50,11 +111,8 @@ export async function joinMeetingFlow(
   replyFn: (msg: string) => Promise<void>,
 ): Promise<void> {
   const config = loadConfig(api.pluginConfig);
-  const llmClient = createSubagentLlmClient(api, undefined);
   const session = new MeetingSession(meetUrl, config);
-
-  // Ensure webhook server is running
-  startWebhookServer(4000, config, llmClient);
+  const llmClient = createSubagentLlmClient(api, session.meetingId);
 
   const ngrokUrl = process.env.NGROK_URL;
 
@@ -75,7 +133,7 @@ export async function joinMeetingFlow(
       console.log(`[MeetingClaw] Real-time transcript enabled via ${ngrokUrl}`);
     }
 
-    await replyFn(`✅ ${config.instanceName} has joined the meeting.`);
+    await replyFn(`${config.instanceName} has joined the meeting.`);
   } catch (err) {
     console.error('Join failed:', safeErrorMessage(err));
     await replyFn('Failed to join the meeting. Please check the link and try again.');

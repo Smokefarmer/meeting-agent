@@ -33,7 +33,7 @@ vi.mock('../speak.js', () => ({
 }));
 
 // Import after mocks
-import { routeIntent } from '../route.js';
+import { routeIntent, isRetryableHttpError, withRetry } from '../route.js';
 import { MeetingSession } from '../session.js';
 
 const mockConfig: OpenClawConfig = {
@@ -380,5 +380,201 @@ describe('routeIntent', () => {
       // This should not throw even though speak rejects
       await expect(routeIntent(intent, session, mockConfig)).resolves.not.toThrow();
     });
+  });
+
+  describe('GitHub retry backoff via handleGitHubIntent', () => {
+    it('retries on 429 with backoff and succeeds on second attempt', async () => {
+      vi.useFakeTimers();
+      const rateLimitError = Object.assign(new Error('429 Rate limit exceeded'), { status: 429 });
+      mockCreate
+        .mockRejectedValueOnce(rateLimitError)
+        .mockResolvedValueOnce({
+          data: {
+            html_url: 'https://github.com/owner/repo/issues/42',
+            number: 42,
+            title: 'Bug: Users cannot log in on mobile',
+          },
+        });
+
+      const intent = createIntent({ type: 'BUG', confidence: 0.92 });
+      const promise = routeIntent(intent, session, mockConfig);
+
+      // Drain all pending timers/microtasks until settled
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries on 500 and succeeds on second attempt', async () => {
+      vi.useFakeTimers();
+      const serverError = Object.assign(new Error('500 Internal Server Error'), { status: 500 });
+      mockCreate
+        .mockRejectedValueOnce(serverError)
+        .mockResolvedValueOnce({
+          data: {
+            html_url: 'https://github.com/owner/repo/issues/43',
+            number: 43,
+            title: 'Bug: Users cannot log in on mobile',
+          },
+        });
+
+      const intent = createIntent({ type: 'BUG', confidence: 0.92 });
+      const promise = routeIntent(intent, session, mockConfig);
+
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT retry on 401 — only 1 call made', async () => {
+      vi.useFakeTimers();
+      const authError = Object.assign(new Error('401 Unauthorized'), { status: 401 });
+      mockCreate.mockRejectedValue(authError);
+
+      const intent = createIntent({ type: 'BUG', confidence: 0.92 });
+      const promise = routeIntent(intent, session, mockConfig);
+
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // Only 1 attempt — 401 is not retryable
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives up after maxRetries and calls speak error', async () => {
+      vi.useFakeTimers();
+      const rateLimitError = Object.assign(new Error('429 Rate limit exceeded'), { status: 429 });
+      mockCreate.mockRejectedValue(rateLimitError);
+
+      const intent = createIntent({ type: 'BUG', confidence: 0.92 });
+      const promise = routeIntent(intent, session, mockConfig);
+
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // 1 initial + 3 retries = 4 calls
+      expect(mockCreate).toHaveBeenCalledTimes(4);
+      // After exhausting retries, the error handler speaks
+      expect(mockRespond).toHaveBeenCalledWith(
+        expect.stringContaining('failed'),
+        mockConfig,
+        'bot-123',
+      );
+    });
+  });
+});
+
+describe('isRetryableHttpError', () => {
+  it('returns true for 429 status on error object', () => {
+    const err = Object.assign(new Error('rate limit'), { status: 429 });
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns true for 500 status on error object', () => {
+    const err = Object.assign(new Error('server error'), { status: 500 });
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns true for 502 status on error object', () => {
+    const err = Object.assign(new Error('bad gateway'), { status: 502 });
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns true for 503 status on error object', () => {
+    const err = Object.assign(new Error('service unavailable'), { status: 503 });
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns true for 504 status on error object', () => {
+    const err = Object.assign(new Error('gateway timeout'), { status: 504 });
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns false for 401 status', () => {
+    const err = Object.assign(new Error('unauthorized'), { status: 401 });
+    expect(isRetryableHttpError(err)).toBe(false);
+  });
+
+  it('returns false for 404 status', () => {
+    const err = Object.assign(new Error('not found'), { status: 404 });
+    expect(isRetryableHttpError(err)).toBe(false);
+  });
+
+  it('returns true when message contains 429', () => {
+    const err = new Error('Request failed with status 429');
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns true when message contains rate limit phrase', () => {
+    const err = new Error('API rate limit exceeded');
+    expect(isRetryableHttpError(err)).toBe(true);
+  });
+
+  it('returns false for non-Error values', () => {
+    expect(isRetryableHttpError('a string')).toBe(false);
+    expect(isRetryableHttpError(null)).toBe(false);
+    expect(isRetryableHttpError(42)).toBe(false);
+  });
+});
+
+describe('withRetry', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns result immediately on first success', async () => {
+    const fn = vi.fn().mockResolvedValue('ok');
+    const promise = withRetry(fn, 3, 100);
+    await vi.runAllTimersAsync();
+    const result = await promise;
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries and eventually returns result', async () => {
+    const retryableError = Object.assign(new Error('503'), { status: 503 });
+    const fn = vi.fn()
+      .mockRejectedValueOnce(retryableError)
+      .mockResolvedValueOnce('success');
+
+    const promise = withRetry(fn, 3, 100);
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result).toBe('success');
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws immediately for non-retryable errors', async () => {
+    const nonRetryable = Object.assign(new Error('401 Unauthorized'), { status: 401 });
+    const fn = vi.fn().mockRejectedValue(nonRetryable);
+
+    // Attach .catch before running timers to prevent unhandled rejection warning
+    const promise = withRetry(fn, 3, 100);
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow('401 Unauthorized');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws after exhausting all retries', async () => {
+    const retryableError = Object.assign(new Error('429 Rate Limit'), { status: 429 });
+    const fn = vi.fn().mockRejectedValue(retryableError);
+
+    // Attach .catch before running timers to prevent unhandled rejection warning
+    const promise = withRetry(fn, 3, 100);
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow('429 Rate Limit');
+    // 1 initial + 3 retries = 4
+    expect(fn).toHaveBeenCalledTimes(4);
   });
 });

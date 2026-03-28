@@ -1,124 +1,38 @@
 /**
- * Recall.ai webhook server — receives real-time transcript events and drives the pipeline.
- * Listens on a configurable port, exposed via ngrok.
- *
- * Wake word detection uses a rolling text buffer to handle Recall.ai's aggressive
- * word splitting (e.g. "hey geor" + "ge" across two segments).
+ * Recall.ai webhook server — thin Express adapter.
+ * Delegates all handler logic to webhook-handlers.ts.
+ * Used as a fallback when OpenClaw registerHttpRoute is not available.
  */
 
 import express from 'express';
-import crypto from 'node:crypto';
 import type { OpenClawConfig } from './config.js';
 import type { MeetingSession } from './session.js';
-import type { TranscriptSegment } from './models.js';
 import type { LlmClient } from './llm.js';
-import { extractAndRoute } from './extract-and-route.js';
-import { detectWakeWord, handleAddressedSpeech } from './converse.js';
-import { generateAndSendSummary } from './summary.js';
-import { safeErrorMessage } from './errors.js';
+import {
+  handleTranscriptWebhook,
+  handleBotDoneWebhook,
+  verifySignature,
+  registerSession as _registerSession,
+  unregisterSession as _unregisterSession,
+  sessions,
+  checkWakeBuffer,
+} from './webhook-handlers.js';
+import type { SessionState } from './webhook-handlers.js';
 
-const EXTRACTION_INTERVAL_WORDS = 50;
-
-/** Max age of a wake word buffer entry before it's discarded. */
-const WAKE_BUFFER_TTL_MS = 5_000;
-
-/** How long a bare wake word waits for a follow-up question. */
-const PENDING_WAKE_WORD_TTL_MS = 5_000;
-
-interface WakeBufferEntry {
-  text: string;
-  speaker: string | null;
-  timestamp: number;
-}
-
-interface PendingWakeWord {
-  speaker: string | null;
-  timestamp: number;
-}
-
-interface SessionState {
-  session: MeetingSession;
-  buffer: string;
-  wordCount: number;
-  /** Rolling buffer of recent segments for cross-segment wake word detection. */
-  wakeBuffer: WakeBufferEntry[];
-  pendingWakeWord: PendingWakeWord | null;
-}
-
-// Active meeting sessions keyed by botId
-const sessions = new Map<string, SessionState>();
+export type { SessionState };
 
 let serverStarted = false;
 
 /**
- * Verify Recall.ai webhook signature (HMAC-SHA256).
- * Returns true if RECALL_WEBHOOK_SECRET is not set (allows unsigned dev mode).
- */
-function verifySignature(rawBody: Buffer, signature: string | undefined): boolean {
-  const secret = process.env.RECALL_WEBHOOK_SECRET;
-  if (!secret) return true;
-  if (!signature) return false;
-
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('hex');
-
-  const sigBuf = Buffer.from(signature, 'utf8');
-  const expBuf = Buffer.from(expected, 'utf8');
-  if (sigBuf.length !== expBuf.length) return false;
-
-  return crypto.timingSafeEqual(sigBuf, expBuf);
-}
-
-/**
  * Register a session so the webhook server can process its transcript.
+ * Delegates to webhook-handlers.ts registerSession.
  */
 export function registerSession(session: MeetingSession): void {
-  if (!session.botId) throw new Error('Cannot register session without botId');
-  sessions.set(session.botId, {
-    session,
-    buffer: '',
-    wordCount: 0,
-    wakeBuffer: [],
-    pendingWakeWord: null,
-  });
-  console.log(`[webhook] Session registered for bot ${session.botId}`);
+  _registerSession(session);
 }
 
 export function unregisterSession(botId: string): void {
-  sessions.delete(botId);
-}
-
-/**
- * Check the rolling wake buffer for a wake word.
- * Combines recent segment texts into a single string and runs detection.
- * This handles Recall.ai splitting words mid-character across segments
- * (e.g. "hey geor" + "ge" → "hey george").
- */
-function checkWakeBuffer(
-  wakeBuffer: WakeBufferEntry[],
-  instanceName: string,
-): { question: string; matchedUpTo: number } | null {
-  if (wakeBuffer.length === 0) return null;
-
-  // Try combining from the most recent entries backward
-  // Check last 1, last 2, last 3... entries
-  for (let start = Math.max(0, wakeBuffer.length - 5); start < wakeBuffer.length; start++) {
-    const combined = wakeBuffer.slice(start).map((e) => e.text).join(' ');
-    const segment: TranscriptSegment = {
-      text: combined,
-      speaker: wakeBuffer[wakeBuffer.length - 1].speaker,
-      timestamp: wakeBuffer[wakeBuffer.length - 1].timestamp,
-    };
-
-    const result = detectWakeWord(segment, instanceName);
-    if (result !== null) {
-      return { question: result, matchedUpTo: wakeBuffer.length };
-    }
-  }
-
-  return null;
+  _unregisterSession(botId);
 }
 
 function createApp(config: OpenClawConfig, llmClient: LlmClient): express.Express {
@@ -142,83 +56,7 @@ function createApp(config: OpenClawConfig, llmClient: LlmClient): express.Expres
 
     res.sendStatus(200);
 
-    const event = req.body;
-    if (event?.event !== 'transcript.data') return;
-
-    const botId: string | undefined = event?.data?.bot?.id;
-    if (!botId) return;
-
-    const state = sessions.get(botId);
-    if (!state) return;
-
-    const words: Array<{ text: string }> = event?.data?.data?.words ?? [];
-    const text = words.map((w: { text: string }) => w.text).join(' ').trim();
-    if (!text) return;
-
-    const speakerName: string | null = event?.data?.data?.participant?.name ?? null;
-    const now = Date.now();
-    const segment: TranscriptSegment = {
-      text,
-      speaker: speakerName,
-      timestamp: now,
-    };
-
-    state.session.addSegment(segment);
-    console.log(`[webhook] ${speakerName ?? 'Unknown'}: ${text}`);
-
-    // --- Wake word detection ---
-
-    // 1. Check if there's a pending wake word waiting for a follow-up question
-    if (state.pendingWakeWord) {
-      const elapsed = now - state.pendingWakeWord.timestamp;
-      if (elapsed < PENDING_WAKE_WORD_TTL_MS) {
-        state.pendingWakeWord = null;
-        console.log(`[webhook] Pending wake word resolved: "${text}"`);
-        handleAddressedSpeech(text, state.session, config, llmClient).catch((err) => {
-          console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
-        });
-        return;
-      }
-      state.pendingWakeWord = null;
-    }
-
-    // 2. Add to rolling wake buffer and prune old entries
-    state.wakeBuffer.push({ text, speaker: speakerName, timestamp: now });
-    state.wakeBuffer = state.wakeBuffer.filter((e) => now - e.timestamp < WAKE_BUFFER_TTL_MS);
-
-    // 3. Check combined buffer for wake word (handles mid-word splits)
-    const wakeMatch = checkWakeBuffer(state.wakeBuffer, config.instanceName);
-    if (wakeMatch) {
-      // Clear wake buffer — wake word consumed
-      state.wakeBuffer = [];
-
-      if (wakeMatch.question.length > 0) {
-        console.log(`[webhook] Wake word + question: "${wakeMatch.question}"`);
-        handleAddressedSpeech(wakeMatch.question, state.session, config, llmClient).catch((err) => {
-          console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
-        });
-      } else {
-        console.log(`[webhook] Wake word detected, waiting for question...`);
-        state.pendingWakeWord = { speaker: speakerName, timestamp: now };
-      }
-      return;
-    }
-
-    // --- Intent extraction accumulation ---
-    state.buffer += ' ' + text;
-    state.wordCount += words.length;
-
-    if (state.wordCount >= EXTRACTION_INTERVAL_WORDS) {
-      const chunk = state.buffer;
-      state.buffer = '';
-      state.wordCount = 0;
-
-      try {
-        await extractAndRoute(chunk, state.session, config, llmClient);
-      } catch (err) {
-        console.error('[webhook] Extraction error:', safeErrorMessage(err));
-      }
-    }
+    await handleTranscriptWebhook(req.body, sessions, config, llmClient);
   });
 
   /**
@@ -233,29 +71,7 @@ function createApp(config: OpenClawConfig, llmClient: LlmClient): express.Expres
 
     res.sendStatus(200);
 
-    const botId: string | undefined = req.body?.bot?.id;
-    if (!botId) return;
-
-    const state = sessions.get(botId);
-    if (!state) return;
-
-    const remaining = state.buffer.trim();
-    if (remaining) {
-      try {
-        await extractAndRoute(remaining, state.session, config, llmClient);
-      } catch (err) {
-        console.error('[webhook] Final extraction error:', safeErrorMessage(err));
-      }
-    }
-
-    try {
-      await generateAndSendSummary(state.session, config);
-    } catch (err) {
-      console.error('[webhook] Summary generation failed:', safeErrorMessage(err));
-    }
-
-    unregisterSession(botId);
-    console.log(`[webhook] Session ended for bot ${botId}`);
+    await handleBotDoneWebhook(req.body, sessions, config, llmClient);
   });
 
   return app;

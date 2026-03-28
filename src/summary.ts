@@ -8,16 +8,30 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import axios from 'axios';
 import type { MeetingSession } from './session.js';
 import type { OpenClawConfig } from './config.js';
+import type { LlmClient } from './llm.js';
 
 const TELEGRAM_MAX_LENGTH = 4096;
 
 export async function generateAndSendSummary(
   session: MeetingSession,
   config: OpenClawConfig,
+  llmClient?: LlmClient,
 ): Promise<void> {
   const markdown = buildMarkdown(session);
 
   await saveToFile(session, markdown);
+
+  if (llmClient?.inferAndDeliver) {
+    try {
+      await llmClient.inferAndDeliver(
+        'Please send this meeting summary to the user:\n\n' + markdown,
+      );
+      return;
+    } catch (error) {
+      console.error('Failed to deliver summary via inferAndDeliver, falling back to Telegram:', error);
+    }
+  }
+
   await sendToTelegram(markdown, config);
 }
 

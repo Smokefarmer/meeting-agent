@@ -198,3 +198,75 @@ describe('createSubagentLlmClient', () => {
     expect(api.mockDeleteSession).toHaveBeenCalled();
   });
 });
+
+describe('inferAndDeliver', () => {
+  let api: ReturnType<typeof createMockApi>;
+  let client: ReturnType<typeof createSubagentLlmClient>;
+
+  beforeEach(() => {
+    api = createMockApi();
+    client = createSubagentLlmClient(api, 'test-meeting');
+  });
+
+  it('calls subagent.run with deliver:true', async () => {
+    api.mockRun.mockResolvedValue({ runId: 'run-deliver-1' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'ok' });
+
+    await client.inferAndDeliver!('Please send this summary to the user:\n\nHello');
+
+    expect(api.mockRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliver: true,
+        message: 'Please send this summary to the user:\n\nHello',
+      }),
+    );
+  });
+
+  it('waits for run but does not call getSessionMessages', async () => {
+    api.mockRun.mockResolvedValue({ runId: 'run-deliver-2' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'ok' });
+
+    await client.inferAndDeliver!('summary prompt');
+
+    expect(api.mockWaitForRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run-deliver-2' }),
+    );
+    expect(api.mockGetSessionMessages).not.toHaveBeenCalled();
+  });
+
+  it('resolves to void on success', async () => {
+    api.mockRun.mockResolvedValue({ runId: 'run-deliver-3' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'ok' });
+
+    const result = await client.inferAndDeliver!('prompt');
+    expect(result).toBeUndefined();
+  });
+
+  it('throws when subagent.run rejects', async () => {
+    api.mockRun.mockRejectedValue(new Error('delivery error'));
+
+    await expect(client.inferAndDeliver!('prompt')).rejects.toThrow('delivery error');
+  });
+
+  it('uses a unique session key containing the meetingId', async () => {
+    api.mockRun.mockResolvedValue({ runId: 'run-deliver-4' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'ok' });
+
+    await client.inferAndDeliver!('prompt');
+
+    const key = api.mockRun.mock.calls[0][0].sessionKey as string;
+    expect(key).toContain('test-meeting');
+    expect(key).toMatch(/^meetingclaw:test-meeting:llm:\d+$/);
+  });
+
+  it('uses a session key without meetingId when none provided', async () => {
+    const clientNoMeeting = createSubagentLlmClient(api);
+    api.mockRun.mockResolvedValue({ runId: 'run-deliver-5' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'ok' });
+
+    await clientNoMeeting.inferAndDeliver!('prompt');
+
+    const key = api.mockRun.mock.calls[0][0].sessionKey as string;
+    expect(key).toMatch(/^meetingclaw:llm:\d+$/);
+  });
+});

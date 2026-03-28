@@ -8,7 +8,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { TranscriptSegment } from './models.js';
 
-export type OnSegmentCallback = (segment: TranscriptSegment) => Promise<void>;
+export type OnSegmentCallback = (segment: TranscriptSegment, isFinal: boolean) => Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Zod schemas for Recall.ai WebSocket events
@@ -109,9 +109,6 @@ function handleMessage(raw: WebSocket.RawData, onSegment: OnSegmentCallback): vo
 
     const transcriptData = RecallTranscriptDataSchema.parse(event.data);
 
-    // Only forward final segments to avoid duplicates from partial transcripts
-    if (!transcriptData.is_final) return;
-
     // Skip empty word arrays
     if (transcriptData.words.length === 0) return;
 
@@ -124,7 +121,7 @@ function handleMessage(raw: WebSocket.RawData, onSegment: OnSegmentCallback): vo
       timestamp,
     };
 
-    onSegment(segment).catch((err: unknown) => {
+    onSegment(segment, transcriptData.is_final).catch((err: unknown) => {
       console.error('onSegment callback error:', err instanceof Error ? err.message : err);
     });
   } catch (err: unknown) {

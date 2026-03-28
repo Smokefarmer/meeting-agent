@@ -21,6 +21,7 @@ const SUBAGENT_MODEL = 'anthropic/claude-haiku-4-5';
  */
 export interface LlmClient {
   infer(prompt: string): Promise<string>;
+  inferAndDeliver?(prompt: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,9 +54,28 @@ export interface PluginRuntime {
   subagent: SubagentApi;
 }
 
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  handler: (input: Record<string, unknown>) => Promise<unknown>;
+}
+
+export interface HttpRouteDefinition {
+  method: 'GET' | 'POST';
+  path: string;
+  handler: (req: {
+    body: unknown;
+    headers: Record<string, string | undefined>;
+    rawBody?: Buffer;
+  }) => Promise<{ status: number; body?: unknown }>;
+}
+
 export interface PluginApi {
   runtime: PluginRuntime;
   pluginConfig?: Record<string, unknown>;
+  registerTool?: (definition: ToolDefinition) => void;
+  registerHttpRoute?: (definition: HttpRouteDefinition) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +83,13 @@ export interface PluginApi {
 // ---------------------------------------------------------------------------
 
 let subagentCounter = 0;
+
+function makeSessionKey(meetingId?: string): string {
+  const counter = ++subagentCounter;
+  return meetingId
+    ? `meetingclaw:${meetingId}:llm:${counter}`
+    : `meetingclaw:llm:${counter}`;
+}
 
 /**
  * Extract text content from a subagent message.
@@ -83,10 +110,7 @@ export function createSubagentLlmClient(api: PluginApi, meetingId?: string): Llm
       let lastError: unknown;
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const counter = ++subagentCounter;
-        const sessionKey = meetingId
-          ? `meetingclaw:${meetingId}:llm:${counter}`
-          : `meetingclaw:llm:${counter}`;
+        const sessionKey = makeSessionKey(meetingId);
 
         try {
           const { runId } = await api.runtime.subagent.run({
@@ -134,6 +158,22 @@ export function createSubagentLlmClient(api: PluginApi, meetingId?: string): Llm
       throw new Error(
         `LLM inference failed after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`,
       );
+    },
+
+    async inferAndDeliver(prompt: string): Promise<void> {
+      const sessionKey = makeSessionKey(meetingId);
+
+      const { runId } = await api.runtime.subagent.run({
+        sessionKey,
+        message: prompt,
+        deliver: true,
+        model: SUBAGENT_MODEL,
+      });
+
+      await api.runtime.subagent.waitForRun({
+        runId,
+        timeoutMs: SUBAGENT_TIMEOUT_MS,
+      });
     },
   };
 }

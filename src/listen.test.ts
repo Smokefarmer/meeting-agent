@@ -140,7 +140,7 @@ describe('streamTranscript', () => {
     expect(onSegment.mock.calls[0][0].speaker).toBeNull();
   });
 
-  it('ignores non-final transcript events', async () => {
+  it('forwards non-final transcript events with isFinal=false', async () => {
     const onSegment = vi.fn<OnSegmentCallback>().mockResolvedValue(undefined);
     streamTranscript('wss://eu-central-1.recall.ai/api/v1/bot/bot-1/transcript', 'key', onSegment);
 
@@ -152,7 +152,8 @@ describe('streamTranscript', () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(onSegment).not.toHaveBeenCalled();
+    expect(onSegment).toHaveBeenCalledOnce();
+    expect(onSegment.mock.calls[0][1]).toBe(false);
   });
 
   it('ignores non-transcript event types', async () => {

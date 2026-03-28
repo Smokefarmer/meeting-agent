@@ -13,6 +13,42 @@ import type { OpenClawConfig } from './config.js';
 import { isDuplicate } from './dedup.js';
 import { respond } from './speak.js';
 
+const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
+
+/**
+ * Returns true if the error is a transient HTTP error worth retrying.
+ * Exported for testing.
+ */
+export function isRetryableHttpError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as unknown as Record<string, unknown>).status;
+  if (typeof status === 'number') {
+    return RETRYABLE_STATUS_CODES.includes(status);
+  }
+  return /429|500|502|503|504|rate.?limit/i.test(err.message);
+}
+
+/**
+ * Retry wrapper with exponential backoff.
+ * Exported for testing.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseMs: number = 1000,
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryableHttpError(err) || attempt === maxRetries) throw err;
+      const delay = baseMs * Math.pow(2, attempt) + Math.random() * 500;
+      await new Promise<void>((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error('Unreachable');
+}
+
 /**
  * Route an intent to the appropriate action handler.
  * For BUG/FEATURE: creates GitHub issues with deduplication.
@@ -63,7 +99,7 @@ async function handleGitHubIntent(
   }
 
   try {
-    const issue = await createGitHubIssue(intent, session, config);
+    const issue = await withRetry(() => createGitHubIssue(intent, session, config));
     session.addCreatedIssue(issue);
     if (session.botId) {
       respond(`Created GitHub issue #${issue.issueNumber}: ${issue.title}`, config, session.botId).catch(console.error);

@@ -458,7 +458,7 @@ describe('webhook-server', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(extractIntents).toHaveBeenCalledWith('we need to fix the login page', TEST_CONFIG, mockLlmClient);
-      expect(generateAndSendSummary).toHaveBeenCalledWith(mockSession, TEST_CONFIG);
+      expect(generateAndSendSummary).toHaveBeenCalledWith(mockSession, TEST_CONFIG, mockLlmClient);
     });
 
     it('generates summary even with empty buffer', async () => {
@@ -469,7 +469,7 @@ describe('webhook-server', () => {
         .send({ bot: { id: BOT_ID } });
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(generateAndSendSummary).toHaveBeenCalledWith(mockSession, TEST_CONFIG);
+      expect(generateAndSendSummary).toHaveBeenCalledWith(mockSession, TEST_CONFIG, mockLlmClient);
     });
 
     it('unregisters session after processing', async () => {

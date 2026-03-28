@@ -185,7 +185,7 @@ describe('respond', () => {
       'aOcS60CY8CoaVaZfqqb5',
       expect.objectContaining({
         text: 'Hello meeting',
-        modelId: 'eleven_turbo_v2_5',
+        modelId: 'eleven_flash_v2_5',
         outputFormat: 'mp3_44100_128',
       }),
     );

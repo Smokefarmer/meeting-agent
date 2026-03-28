@@ -30,18 +30,30 @@ export async function runPipeline(session: MeetingSession, llmClient: LlmClient)
 
   let bufferText = '';
   let lastExtractionTime = Date.now();
+  let partialWakeHandled = false;
 
-  const onSegment = async (segment: TranscriptSegment): Promise<void> => {
-    session.addSegment(segment);
+  const onSegment = async (segment: TranscriptSegment, isFinal: boolean): Promise<void> => {
+    // Reset the partial-wake dedup flag when a final transcript arrives
+    if (isFinal) {
+      partialWakeHandled = false;
+    }
 
     // Check if the bot is being addressed by name — handle Q&A
     const question = detectWakeWord(segment, config.instanceName);
     if (question !== null && question.length > 0) {
-      handleAddressedSpeech(question, session, config, llmClient).catch((err) => {
-        console.error('Q&A handler failed:', safeErrorMessage(err));
-      });
+      if (!partialWakeHandled) {
+        partialWakeHandled = true;
+        handleAddressedSpeech(question, session, config, llmClient).catch((err) => {
+          console.error('Q&A handler failed:', safeErrorMessage(err));
+        });
+      }
       return; // Don't include addressed speech in extraction buffer
     }
+
+    // Only persist and buffer final transcripts
+    if (!isFinal) return;
+
+    session.addSegment(segment);
 
     const line = segment.speaker ? `${segment.speaker}: ${segment.text}` : segment.text;
     bufferText += line + '\n';
@@ -59,6 +71,8 @@ export async function runPipeline(session: MeetingSession, llmClient: LlmClient)
     }
   };
 
+  session.startCheckpointing();
+
   try {
     if (session.websocketUrl) {
       await streamTranscript(session.websocketUrl, config.recallApiKey, onSegment);
@@ -68,9 +82,9 @@ export async function runPipeline(session: MeetingSession, llmClient: LlmClient)
       await new Promise<void>((resolve) => setTimeout(resolve, 60 * 60 * 1000)); // wait up to 1h
     }
   } finally {
-    session.end();
+    await session.end();
     try {
-      await generateAndSendSummary(session, config);
+      await generateAndSendSummary(session, config, llmClient);
     } catch (err) {
       console.error('Summary generation failed:', safeErrorMessage(err));
     }
