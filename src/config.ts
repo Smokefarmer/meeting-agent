@@ -18,11 +18,11 @@ export function loadConfig(pluginConfig?: Record<string, unknown>): OpenClawConf
   return ConfigSchema.parse({
     instanceName: (pluginConfig?.instanceName as string) ?? process.env.OPENCLAW_INSTANCE_NAME ?? '',
     recallApiKey: (pluginConfig?.recallApiKey as string) ?? process.env.RECALL_API_KEY ?? '',
-    elevenLabsApiKey: (pluginConfig?.elevenLabsApiKey as string | undefined) ?? process.env.ELEVENLABS_API_KEY ?? null,
-    githubToken: (pluginConfig?.githubToken as string | undefined) ?? process.env.GITHUB_TOKEN ?? null,
-    githubRepo: (pluginConfig?.githubRepo as string | undefined) ?? process.env.GITHUB_REPO ?? null,
-    telegramBotToken: (pluginConfig?.telegramBotToken as string | undefined) ?? process.env.TELEGRAM_BOT_TOKEN ?? null,
-    telegramChatId: (pluginConfig?.telegramChatId as string | undefined) ?? process.env.TELEGRAM_CHAT_ID ?? null,
+    elevenLabsApiKey: (pluginConfig?.elevenLabsApiKey as string | undefined) ?? (process.env.ELEVENLABS_API_KEY || null),
+    githubToken: (pluginConfig?.githubToken as string | undefined) ?? (process.env.GITHUB_TOKEN || null),
+    githubRepo: (pluginConfig?.githubRepo as string | undefined) ?? (process.env.GITHUB_REPO || null),
+    telegramBotToken: (pluginConfig?.telegramBotToken as string | undefined) ?? (process.env.TELEGRAM_BOT_TOKEN || null),
+    telegramChatId: (pluginConfig?.telegramChatId as string | undefined) ?? (process.env.TELEGRAM_CHAT_ID || null),
     confidenceThreshold: Number((pluginConfig?.confidenceThreshold as number | undefined) ?? process.env.CONFIDENCE_THRESHOLD ?? '0.85'),
   });
 }
