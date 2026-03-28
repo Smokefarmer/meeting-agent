@@ -138,9 +138,16 @@ describe('createSubagentLlmClient', () => {
     );
   });
 
-  it('throws on subagent error', async () => {
+  it('throws immediately on rate-limited subagent error', async () => {
     api.mockRun.mockResolvedValue({ runId: 'run-1' });
     api.mockWaitForRun.mockResolvedValue({ status: 'error', error: 'rate limited' });
+
+    await expect(client.infer('prompt')).rejects.toThrow('LLM rate-limited');
+  });
+
+  it('throws after retries on non-rate-limit subagent error', async () => {
+    api.mockRun.mockResolvedValue({ runId: 'run-1' });
+    api.mockWaitForRun.mockResolvedValue({ status: 'error', error: 'internal server error' });
 
     await expect(client.infer('prompt')).rejects.toThrow(
       'LLM inference failed after 3 attempts',
