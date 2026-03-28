@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { OpenClawConfig } from '../config.js';
 import type { MeetingSession } from '../session.js';
+import type { LlmClient } from '../llm.js';
 
 vi.mock('../detect.js', () => ({
   extractIntents: vi.fn().mockResolvedValue([]),
@@ -32,6 +33,8 @@ const TEST_CONFIG: OpenClawConfig = {
   telegramChatId: null,
   confidenceThreshold: 0.85,
 };
+
+const mockLlmClient: LlmClient = { infer: vi.fn() };
 
 function createMockSession(): MeetingSession {
   return {
@@ -65,7 +68,7 @@ describe('extractAndRoute', () => {
     vi.mocked(extractIntents).mockResolvedValue([intent]);
     vi.mocked(isDuplicate).mockReturnValue(false);
 
-    const count = await extractAndRoute('login is broken', session, TEST_CONFIG);
+    const count = await extractAndRoute('login is broken', session, TEST_CONFIG, mockLlmClient);
 
     expect(count).toBe(1);
     expect(session.addIntent).toHaveBeenCalledWith(intent);
@@ -88,7 +91,7 @@ describe('extractAndRoute', () => {
     ]);
     vi.mocked(isDuplicate).mockReturnValue(true);
 
-    const count = await extractAndRoute('duplicate text', session, TEST_CONFIG);
+    const count = await extractAndRoute('duplicate text', session, TEST_CONFIG, mockLlmClient);
 
     expect(count).toBe(0);
     expect(session.addIntent).not.toHaveBeenCalled();
@@ -99,7 +102,7 @@ describe('extractAndRoute', () => {
     const session = createMockSession();
     vi.mocked(extractIntents).mockResolvedValue([]);
 
-    const count = await extractAndRoute('nothing actionable', session, TEST_CONFIG);
+    const count = await extractAndRoute('nothing actionable', session, TEST_CONFIG, mockLlmClient);
 
     expect(count).toBe(0);
   });
@@ -111,7 +114,7 @@ describe('extractAndRoute', () => {
       { id: 'i2', type: 'FEATURE', text: 'feat1', owner: null, deadline: null, priority: 'medium', confidence: 0.88, sourceQuote: 'feat1' },
     ]);
 
-    const count = await extractAndRoute('bugs and features', session, TEST_CONFIG);
+    const count = await extractAndRoute('bugs and features', session, TEST_CONFIG, mockLlmClient);
 
     expect(count).toBe(2);
     expect(routeIntent).toHaveBeenCalledTimes(2);
@@ -121,6 +124,6 @@ describe('extractAndRoute', () => {
     const session = createMockSession();
     vi.mocked(extractIntents).mockRejectedValue(new Error('LLM timeout'));
 
-    await expect(extractAndRoute('text', session, TEST_CONFIG)).rejects.toThrow('LLM timeout');
+    await expect(extractAndRoute('text', session, TEST_CONFIG, mockLlmClient)).rejects.toThrow('LLM timeout');
   });
 });

@@ -1,13 +1,12 @@
 /**
- * Intent extraction from transcript chunks via Claude CLI.
- * Uses `claude --print` — no external API key needed.
+ * Intent extraction from transcript chunks via LLM client.
  */
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Intent } from './models.js';
 import type { OpenClawConfig } from './config.js';
-import { inferWithClaude } from './claude-llm.js';
+import type { LlmClient } from './llm.js';
 import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
 
 const IntentTypeEnum = z.enum(['BUG', 'FEATURE', 'TODO', 'DECISION', 'MEETING_REQUEST']);
@@ -36,11 +35,12 @@ export type RawIntent = z.infer<typeof RawIntentSchema>;
 export async function extractIntents(
   transcriptChunk: string,
   config: OpenClawConfig,
+  llmClient: LlmClient,
 ): Promise<Intent[]> {
   if (transcriptChunk.trim().length === 0) return [];
 
   const prompt = EXTRACTION_SYSTEM_PROMPT + '\n\n' + wrapTranscript(transcriptChunk);
-  const text = await inferWithClaude(prompt);
+  const text = await llmClient.infer(prompt);
   const parsed = parseExtractionResponse(text);
 
   return parsed.items

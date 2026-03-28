@@ -5,6 +5,7 @@
 
 import type { MeetingSession } from './session.js';
 import type { TranscriptSegment } from './models.js';
+import type { LlmClient } from './llm.js';
 import { streamTranscript } from './listen.js';
 import { extractAndRoute } from './extract-and-route.js';
 import { generateAndSendSummary } from './summary.js';
@@ -14,7 +15,7 @@ import { safeErrorMessage } from './errors.js';
 const EXTRACTION_INTERVAL_MS = 30_000;
 const MIN_BUFFER_LENGTH = 100;
 
-export async function runPipeline(session: MeetingSession): Promise<void> {
+export async function runPipeline(session: MeetingSession, llmClient: LlmClient): Promise<void> {
   const { config } = session;
 
   if (!session.botId) {
@@ -36,7 +37,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
     // Check if the bot is being addressed by name — handle Q&A
     const question = detectWakeWord(segment, config.instanceName);
     if (question !== null && question.length > 0) {
-      handleAddressedSpeech(question, session, config).catch((err) => {
+      handleAddressedSpeech(question, session, config, llmClient).catch((err) => {
         console.error('Q&A handler failed:', safeErrorMessage(err));
       });
       return; // Don't include addressed speech in extraction buffer
@@ -51,7 +52,7 @@ export async function runPipeline(session: MeetingSession): Promise<void> {
       lastExtractionTime = Date.now();
 
       try {
-        await extractAndRoute(chunk, session, config);
+        await extractAndRoute(chunk, session, config, llmClient);
       } catch (err) {
         console.error('Extraction failed:', safeErrorMessage(err));
       }

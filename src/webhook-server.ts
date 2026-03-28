@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import type { OpenClawConfig } from './config.js';
 import type { MeetingSession } from './session.js';
 import type { TranscriptSegment } from './models.js';
+import type { LlmClient } from './llm.js';
 import { extractAndRoute } from './extract-and-route.js';
 import { detectWakeWord, handleAddressedSpeech } from './converse.js';
 import { generateAndSendSummary } from './summary.js';
@@ -120,7 +121,7 @@ function checkWakeBuffer(
   return null;
 }
 
-function createApp(config: OpenClawConfig): express.Express {
+function createApp(config: OpenClawConfig, llmClient: LlmClient): express.Express {
   const app = express();
 
   app.use(express.json({
@@ -173,7 +174,7 @@ function createApp(config: OpenClawConfig): express.Express {
       if (elapsed < PENDING_WAKE_WORD_TTL_MS) {
         state.pendingWakeWord = null;
         console.log(`[webhook] Pending wake word resolved: "${text}"`);
-        handleAddressedSpeech(text, state.session, config).catch((err) => {
+        handleAddressedSpeech(text, state.session, config, llmClient).catch((err) => {
           console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
         });
         return;
@@ -193,7 +194,7 @@ function createApp(config: OpenClawConfig): express.Express {
 
       if (wakeMatch.question.length > 0) {
         console.log(`[webhook] Wake word + question: "${wakeMatch.question}"`);
-        handleAddressedSpeech(wakeMatch.question, state.session, config).catch((err) => {
+        handleAddressedSpeech(wakeMatch.question, state.session, config, llmClient).catch((err) => {
           console.error('[webhook] Q&A handler failed:', safeErrorMessage(err));
         });
       } else {
@@ -213,7 +214,7 @@ function createApp(config: OpenClawConfig): express.Express {
       state.wordCount = 0;
 
       try {
-        await extractAndRoute(chunk, state.session, config);
+        await extractAndRoute(chunk, state.session, config, llmClient);
       } catch (err) {
         console.error('[webhook] Extraction error:', safeErrorMessage(err));
       }
@@ -241,7 +242,7 @@ function createApp(config: OpenClawConfig): express.Express {
     const remaining = state.buffer.trim();
     if (remaining) {
       try {
-        await extractAndRoute(remaining, state.session, config);
+        await extractAndRoute(remaining, state.session, config, llmClient);
       } catch (err) {
         console.error('[webhook] Final extraction error:', safeErrorMessage(err));
       }
@@ -263,11 +264,11 @@ function createApp(config: OpenClawConfig): express.Express {
 /**
  * Start the webhook server. No-op if already started.
  */
-export function startWebhookServer(port: number, config: OpenClawConfig): void {
+export function startWebhookServer(port: number, config: OpenClawConfig, llmClient: LlmClient): void {
   if (serverStarted) return;
   serverStarted = true;
 
-  const app = createApp(config);
+  const app = createApp(config, llmClient);
   app.listen(port, () => {
     console.log(`[webhook] Server listening on port ${port}`);
   });

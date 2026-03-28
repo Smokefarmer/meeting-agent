@@ -56,7 +56,8 @@ meeting-agent/
 │   ├── join.ts           # Recall.ai API: join call
 │   ├── listen.ts         # Recall.ai WebSocket transcript
 │   ├── detect.ts         # Intent extraction via Claude CLI
-│   ├── claude-llm.ts     # Claude CLI subprocess LLM client
+│   ├── llm.ts            # LlmClient interface + subagent/CLI factories
+│   ├── plugin.ts         # OpenClaw plugin entry point
 │   ├── dedup.ts          # Intent deduplication
 │   ├── route.ts          # Intent → action router
 │   ├── speak.ts          # ElevenLabs TTS
