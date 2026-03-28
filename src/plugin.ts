@@ -53,8 +53,9 @@ export function registerMeetingClaw(api: PluginApi): void {
   if (api.registerTool) {
     api.registerTool({
       name: 'join_meeting',
+      label: 'Join Meeting',
       description: 'Join a Google Meet call and start listening for action items, bugs, features, and decisions',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           meeting_url: {
@@ -64,14 +65,17 @@ export function registerMeetingClaw(api: PluginApi): void {
         },
         required: ['meeting_url'],
       },
-      handler: async (input) => {
-        const meetUrl = String(input['meeting_url']);
+      async execute(_toolCallId: string, params: Record<string, unknown>) {
+        const meetUrl = String(params['meeting_url'] ?? '');
         await joinMeetingFlow(meetUrl, api, async (msg) => {
           console.log(`[MeetingClaw] ${msg}`);
         });
-        return { status: 'joined', meeting_url: meetUrl };
+        return {
+          content: [{ type: 'text' as const, text: `Joined meeting: ${meetUrl}` }],
+          details: { status: 'joined', meeting_url: meetUrl },
+        };
       },
-    });
+    } as any);
   }
 
   // Register HTTP routes via OpenClaw gateway, or fall back to Express
