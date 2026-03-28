@@ -5,20 +5,16 @@ import { EXTRACTION_SYSTEM_PROMPT, wrapTranscript } from './prompts.js';
 import type { OpenClawConfig } from './config.js';
 
 // ---------------------------------------------------------------------------
-// Mock Gemini SDK
+// Mock Claude CLI via openclaw-llm
 // ---------------------------------------------------------------------------
 
-const mockGenerateContent = vi.fn();
+const { mockInferWithClaude } = vi.hoisted(() => ({
+  mockInferWithClaude: vi.fn(),
+}));
 
-vi.mock('@google/generative-ai', () => {
-  return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-      getGenerativeModel: vi.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
-      }),
-    })),
-  };
-});
+vi.mock('./openclaw-llm.js', () => ({
+  inferWithClaude: mockInferWithClaude,
+}));
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -28,7 +24,7 @@ const mockConfig: OpenClawConfig = {
   instanceName: 'test',
   recallApiKey: 'sk-test',
   elevenLabsApiKey: 'sk-test',
-  geminiApiKey: 'sk-test-key',
+  
   githubToken: null,
   githubRepo: null,
   telegramBotToken: null,
@@ -36,10 +32,8 @@ const mockConfig: OpenClawConfig = {
   confidenceThreshold: 0.85,
 };
 
-function makeGeminiResponse(text: string) {
-  return {
-    response: { text: () => text },
-  };
+function makeClaudeResponse(text: string): string {
+  return text;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +220,7 @@ describe('parseExtractionResponse', () => {
 
 describe('extractIntents', () => {
   beforeEach(() => {
-    mockGenerateContent.mockReset();
+    mockInferWithClaude.mockReset();
   });
 
   it('filters intents by confidence threshold', async () => {
@@ -238,7 +232,7 @@ describe('extractIntents', () => {
       ],
     });
 
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
 
     const result = await extractIntents('Some transcript text', mockConfig);
 
@@ -260,44 +254,44 @@ describe('extractIntents', () => {
     const result = await extractIntents('', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithClaude).not.toHaveBeenCalled();
   });
 
   it('returns empty array for whitespace-only transcript without calling API', async () => {
     const result = await extractIntents('   \n\t  ', mockConfig);
 
     expect(result).toEqual([]);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockInferWithClaude).not.toHaveBeenCalled();
   });
 
   it('throws when Gemini API call fails', async () => {
-    mockGenerateContent.mockRejectedValueOnce(new Error('API unavailable'));
+    mockInferWithClaude.mockImplementationOnce(() => { throw new Error('API unavailable'); });
 
     await expect(
       extractIntents('Some transcript', mockConfig),
-    ).rejects.toThrow('Intent extraction failed after 3 attempts');
+    ).rejects.toThrow('API unavailable');
   });
 
   it('sends transcript to Gemini generateContent', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
 
     await extractIntents('Test transcript', mockConfig);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
+    expect(mockInferWithClaude).toHaveBeenCalledOnce();
+    const callArg = mockInferWithClaude.mock.calls[0][0] as string;
     expect(callArg).toContain('Test transcript');
   });
 
   it('wraps transcript in <transcript> tags', async () => {
     const responseJson = JSON.stringify({ items: [] });
-    mockGenerateContent.mockResolvedValueOnce(makeGeminiResponse(responseJson));
+    mockInferWithClaude.mockReturnValueOnce(makeClaudeResponse(responseJson));
 
     const transcript = 'Alice said hello';
     await extractIntents(transcript, mockConfig);
 
-    expect(mockGenerateContent).toHaveBeenCalledOnce();
-    const callArg = mockGenerateContent.mock.calls[0][0] as string;
-    expect(callArg).toBe(wrapTranscript(transcript));
+    expect(mockInferWithClaude).toHaveBeenCalledOnce();
+    const callArg = mockInferWithClaude.mock.calls[0][0] as string;
+    expect(callArg).toContain(wrapTranscript(transcript));
   });
 });
