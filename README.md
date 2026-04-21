@@ -28,9 +28,12 @@ AI Meeting Assistant that **takes action**, not just notes.
 
 ## Status
 
-🚧 **Planning Phase** - Hackathon Project (OpenClaw Hack_001, Vienna, March 2026)
+🚧 **Early prototype with active planning**
 
-See `/docs` for architecture and planning documents.
+Key planning docs:
+- `docs/IMPLEMENTATION-SHORTLIST.md` - ranked build order from the research set
+- `docs/IMPLEMENTATION-ROADMAP.md` - phased delivery and testing plan
+- `docs/MARKET-RESEARCH.md` - positioning and competitor analysis
 
 ## Team
 
