@@ -40,3 +40,35 @@ export interface MeetingSummary {
   decisions: string[];
   markdown: string;
 }
+
+export type PermissionState = 'granted' | 'denied' | 'not_needed';
+export type MockContextMode = 'auto' | 'manual_review' | 'read_only';
+
+export interface SerializedMeetingSession {
+  meetingId: string;
+  url: string;
+  startTime: string;
+  botId: string | null;
+  websocketUrl: string | null;
+  isActive: boolean;
+  transcriptBuffer: TranscriptSegment[];
+  intents: Intent[];
+  createdIssues: CreatedIssue[];
+  decisions: string[];
+}
+
+export interface MockMeetingContext {
+  permissions: {
+    github: PermissionState;
+    calendar: PermissionState;
+    telegram: PermissionState;
+  };
+  expectedMode: MockContextMode;
+}
+
+export interface MockMeetingContextBundle {
+  fixtureId: string;
+  description: string;
+  mockContext: MockMeetingContext;
+  session: SerializedMeetingSession;
+}

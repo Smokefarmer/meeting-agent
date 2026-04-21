@@ -1,0 +1,42 @@
+import type { MockMeetingContextBundle } from '../../models.js';
+
+const calendarPermissionDenied: MockMeetingContextBundle = {
+  fixtureId: 'calendar-permission-denied',
+  description: 'Meeting context where a follow-up sync is requested but calendar write access is unavailable.',
+  mockContext: {
+    permissions: {
+      github: 'granted',
+      calendar: 'denied',
+      telegram: 'granted',
+    },
+    expectedMode: 'manual_review',
+  },
+  session: {
+    meetingId: 'meeting-calendar-denied-001',
+    url: 'https://meet.google.com/calendar-denied-demo',
+    startTime: '2026-04-19T20:30:00.000Z',
+    botId: 'bot-calendar-denied',
+    websocketUrl: 'wss://recall.example.test/meeting-calendar-denied-001',
+    isActive: true,
+    transcriptBuffer: [
+      { speaker: 'Anna', text: "Let's schedule a thirty minute bug triage tomorrow morning.", timestamp: 1713558600000 },
+      { speaker: 'Claude', text: 'I noted the request, but calendar permissions are not available.', timestamp: 1713558660000 },
+    ],
+    intents: [
+      {
+        id: 'intent-meeting-1',
+        type: 'MEETING_REQUEST',
+        text: 'Schedule a thirty minute bug triage tomorrow morning',
+        owner: null,
+        deadline: 'tomorrow morning',
+        priority: 'medium',
+        confidence: 0.91,
+        sourceQuote: "Let's schedule a thirty minute bug triage tomorrow morning.",
+      },
+    ],
+    createdIssues: [],
+    decisions: ['Calendar follow-up stays manual until write access is approved.'],
+  },
+};
+
+export default calendarPermissionDenied;

@@ -11,6 +11,11 @@ import type {
   CreatedIssue,
   TranscriptSegment,
   MeetingSummary,
+  PermissionState,
+  MockContextMode,
+  SerializedMeetingSession,
+  MockMeetingContext,
+  MockMeetingContextBundle,
 } from './models.js';
 
 describe('models', () => {
@@ -122,6 +127,20 @@ describe('models', () => {
     });
   });
 
+  describe('PermissionState', () => {
+    it('accepts all valid permission states', () => {
+      const states: PermissionState[] = ['granted', 'denied', 'not_needed'];
+      expect(states).toHaveLength(3);
+    });
+  });
+
+  describe('MockContextMode', () => {
+    it('accepts all supported mock execution modes', () => {
+      const modes: MockContextMode[] = ['auto', 'manual_review', 'read_only'];
+      expect(modes).toHaveLength(3);
+    });
+  });
+
   describe('MeetingSummary', () => {
     it('has the correct shape with all required fields', () => {
       const now = new Date();
@@ -180,6 +199,60 @@ describe('models', () => {
       expect(summary.createdIssues).toHaveLength(1);
       expect(summary.createdIssues[0]).toBe(issue);
       expect(summary.decisions).toEqual(['Ship dark mode by Q3']);
+    });
+  });
+
+  describe('SerializedMeetingSession and MockMeetingContextBundle', () => {
+    it('captures the serialized session shape used by mock fixtures', () => {
+      const session: SerializedMeetingSession = {
+        meetingId: 'meeting-serialized-001',
+        url: 'https://meet.google.com/mock-bundle-demo',
+        startTime: '2026-04-19T20:00:00.000Z',
+        botId: 'bot-serialized',
+        websocketUrl: 'wss://recall.example.test/mock-bundle-demo',
+        isActive: true,
+        transcriptBuffer: [{ text: 'Status?', speaker: 'Tom', timestamp: 1713556800000 }],
+        intents: [],
+        createdIssues: [],
+        decisions: ['Keep typed fixtures aligned with MeetingSession#toJSON.'],
+      };
+
+      expect(session.meetingId).toBe('meeting-serialized-001');
+      expect(session.transcriptBuffer).toHaveLength(1);
+      expect(session.decisions[0]).toContain('typed fixtures');
+    });
+
+    it('captures mock fixture metadata alongside the serialized session payload', () => {
+      const mockContext: MockMeetingContext = {
+        permissions: {
+          github: 'granted',
+          calendar: 'denied',
+          telegram: 'not_needed',
+        },
+        expectedMode: 'manual_review',
+      };
+
+      const bundle: MockMeetingContextBundle = {
+        fixtureId: 'typed-bundle-demo',
+        description: 'Typed mock meeting bundle',
+        mockContext,
+        session: {
+          meetingId: 'meeting-serialized-002',
+          url: 'https://meet.google.com/typed-bundle-demo',
+          startTime: '2026-04-19T21:00:00.000Z',
+          botId: null,
+          websocketUrl: null,
+          isActive: false,
+          transcriptBuffer: [],
+          intents: [],
+          createdIssues: [],
+          decisions: [],
+        },
+      };
+
+      expect(bundle.mockContext.expectedMode).toBe('manual_review');
+      expect(bundle.mockContext.permissions.calendar).toBe('denied');
+      expect(bundle.session.isActive).toBe(false);
     });
   });
 });
